@@ -59,6 +59,11 @@ export const triggerProcess = async (submissionId) => {
   return response.data;
 };
 
+export const trainModel = async (payload) => {
+  const response = await api.post('/train', payload, { timeout: 60000 });
+  return response.data;
+};
+
 export const fetchResults = async (submissionId) => {
   try {
     const response = await api.get(`/api/results/${submissionId}`);
@@ -96,5 +101,14 @@ export const fetchPropertyResult = async (submissionId) => {
 
 export const fetchTriageProperties = async () => {
   const response = await api.get('/api/triage/properties');
+  return response.data;
+};
+
+export const predictTriage = async (payload) => {
+  // Use a longer timeout for file uploads and model inference
+  const response = await api.post('/api/triage/properties', payload, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
+  });
   return response.data;
 };

@@ -217,7 +217,7 @@ export default function PipelineAnimation() {
     }
     setActiveWaitNodes([]);
     await new Promise(r => setTimeout(r, 2500));
-    navigate('/comparison', { state: { submissionId } });
+    navigate('/triage', { state: { submissionId } });
   };
 
   // ✅ useEffect placed AFTER runFlow declaration to avoid ReferenceError
@@ -226,36 +226,25 @@ export default function PipelineAnimation() {
 
   /* ================================================================ */
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50" style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="bg-gray-50 flex flex-col w-full h-full" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* Shared header — matches TriagePage, DecisionComparison, etc. */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50" style={{ flexShrink: 0 }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/')}
-              title="Home"
-              className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-            </button>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">AI Risk Intelligence Pipeline</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Processing multi-layer underwriting signals in real time.</p>
-            </div>
-          </div>
+      {/* Cleaned up Inner Header to avoid double bounding boxes with Layout */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between w-full" style={{ flexShrink: 0 }}>
+        <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors"
+            className="text-gray-500 hover:text-blue-600 flex items-center gap-1.5 text-sm font-medium transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
           </button>
+          <div className="h-4 w-px bg-gray-300"></div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">AI Risk Intelligence Pipeline</h1>
+            <p className="text-xs text-gray-500 mt-0.5">Processing multi-layer underwriting signals in real time.</p>
+          </div>
         </div>
       </div>
 

@@ -1,28 +1,24 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
-import PropertyOverview from './pages/PropertyOverview';
-import UnderwriterDecision from './pages/UnderwriterDecision';
-import ResponseReceived from './pages/ResponseReceived';
+
+import AdminLayout from './components/AdminLayout';
+import AdminConfigPage from './pages/AdminConfigPage';
+import DataUploadPage from './pages/DataUploadPage';
+
 import PipelineAnimation from './pages/PipelineAnimation';
-import DecisionComparison from './pages/DecisionComparison';
 import PropertyDetail from './pages/PropertyDetail';
-import Leaderboard from './pages/Leaderboard';
 import TriagePage from './pages/TriagePage';
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/"                  element={<LandingPage />} />
-        <Route path="/overview"          element={<PropertyOverview />} />
-        <Route path="/decision"          element={<UnderwriterDecision />} />
-        <Route path="/response-received" element={<ResponseReceived />} />
-        <Route path="/processing"        element={<PipelineAnimation />} />
-        <Route path="/comparison"        element={<DecisionComparison />} />
-        <Route path="/property/:id"      element={<PropertyDetail />} />
-        <Route path="/leaderboard"       element={<Leaderboard />} />
-        <Route path="/triage"            element={<TriagePage />} />
+        <Route path="/" element={<AdminLayout><AdminConfigPage /></AdminLayout>} />
+        <Route path="/upload" element={<AdminLayout><DataUploadPage /></AdminLayout>} />
+
+        <Route path="/processing" element={<AdminLayout><PipelineAnimation /></AdminLayout>} />
+        <Route path="/property/:id" element={<AdminLayout><PropertyDetail /></AdminLayout>} />
+        <Route path="/triage" element={<AdminLayout><TriagePage /></AdminLayout>} />
       </Routes>
     </Router>
   );
