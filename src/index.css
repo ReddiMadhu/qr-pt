@@ -240,3 +240,22 @@ a,
 .division-box.processing .division-label {
   color: #2563eb;
 }
+
+/* ── Smart Assign Diagram Animations ────────────────────────────── */
+
+@keyframes flow-smart {
+  from {
+    stroke-dashoffset: 24px;
+  }
+
+  to {
+    stroke-dashoffset: 0px;
+  }
+}
+
+.path-smart-progress {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 8;
+  animation: flow-smart 0.8s linear infinite;
+}

@@ -1,6 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { predictTriage } from '../services/api';
+
+// ─── Exclusion rule ID → applyEvaluation boolean key mapping ──────────────────
+const RULE_KEY_MAP = {
+    rule1: 'contents_coverage_minimum',
+    rule2: 'building_coverage_minimum',
+    rule3: 'invalid_zip_state',
+    rule4: 'applicant_age',
+    rule5: 'high_loss_frequency',
+    rule6: 'low_income',
+    rule7: 'non_competitive_insurer',
+    rule8: 'low_broker_approval',
+    rule9: 'broker_fraud_history',
+};
+
+const VALID_STATE_CODES = [
+    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+    'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+    'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+    'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+    'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+];
+
+// ─── Evaluation logic (adapted from ExcludedDashboard reference code) ─────────
+const applyEvaluation = (df, exclusionRules) => {
+    if (!Array.isArray(df)) return [];
+
+    const getNum = (val) => parseFloat(val) || 0;
+    const getBool = (val) => Boolean(val) && val !== '0' && val !== 0 && val !== 'false';
+
+    const evaluateRow = (row) => {
+        const reasons = [];
+
+        if (exclusionRules.contents_coverage_minimum && row.cover_type?.toLowerCase() === 'contents only') {
+            if (getNum(row.contents_coverage_limit) < 50000)
+                reasons.push('Contents coverage below product minimum');
+        }
+        if (exclusionRules.building_coverage_minimum && row.cover_type?.toLowerCase() === 'building only') {
+            if (getNum(row.building_coverage_limit) < 50000)
+                reasons.push('Building coverage below product minimum');
+        }
+        if (exclusionRules.invalid_zip_state &&
+            (!String(row.postal_code).match(/^\d{4,5}$/) || !VALID_STATE_CODES.includes(row.state_code))) {
+            reasons.push('Invalid U.S. ZIP or State code');
+        }
+        if (exclusionRules.applicant_age && getNum(row.age) < 21)
+            reasons.push('Applicant under 21 - outside risk criteria');
+        if (exclusionRules.high_loss_frequency && getNum(row.property_past_loss_freq) >= 3)
+            reasons.push('Past loss frequency is high');
+        if (exclusionRules.low_income && getNum(row.annual_income) < 30000)
+            reasons.push("Client's income is below the acceptable risk threshold");
+        if (exclusionRules.non_competitive_insurer && ['NFU', 'Britt'].includes(row.Property_previous_insurer))
+            reasons.push('Holding insurer not competitive');
+        if (exclusionRules.low_broker_approval && getNum(row.broker_approval_rate) < 0.1)
+            reasons.push('Broker has a low approval rate');
+        if (exclusionRules.broker_fraud_history && getBool(row.broker_fraud_history))
+            reasons.push('Broker has a history of fraud');
+
+        return reasons.length > 0
+            ? { Decision: 'UW Review', Reasons: reasons.join(', ') }
+            : { Decision: 'Accepted', Reasons: 'Accepted for Prediction' };
+    };
+
+    return df.map(row => ({ ...row, ...evaluateRow(row) }));
+};
+
+// ─── Pie chart colours per channel ────────────────────────────────────────────
+const CHANNEL_COLORS = ['#3b82f6', '#1e3a8a', '#06b6d4', '#6366f1', '#f59e0b'];
 
 const MOCK_DATA = [
     { sub: 'SUB00012', ch: 'Broker', date: '1/24/2025', app: 'APP00034', prop: 'PR00034', pol: 'PO00034', bro: 'BR00898', desc: 'She either entire l...' },
@@ -8,7 +75,7 @@ const MOCK_DATA = [
     { sub: 'SUB00164', ch: 'Online', date: '5/10/2025', app: 'APP00164', prop: 'PR00164', pol: 'PO00164', bro: '-', desc: 'Possible collection gove...' },
     { sub: 'SUB07726', ch: 'Broker', date: '10/30/2025', app: 'APP07726', prop: 'PR07726', pol: 'PO07726', bro: 'BR01768', desc: 'Knowledge result opti...' },
     { sub: 'SUB09890', ch: 'Broker', date: '11/5/2025', app: 'APP09890', prop: 'PR00890', pol: 'PO09890', bro: 'BR03118', desc: 'Base fish address tend a...' },
-    { sub: 'SUB00244', ch: 'Broker', date: '1/5/2025', app: 'APP00244', prop: 'PR00244', pol: 'PO00244', bro: 'BR03044', desc: 'Final nati...' }
+    { sub: 'SUB00244', ch: 'Broker', date: '1/5/2025', app: 'APP00244', prop: 'PR00244', pol: 'PO00244', bro: 'BR03044', desc: 'Final nati...' },
 ];
 
 const DataUploadPage = () => {
@@ -17,12 +84,31 @@ const DataUploadPage = () => {
     const [uploaded, setUploaded] = useState(false);
     const [fileObj, setFileObj] = useState(null);
     const [isRunning, setIsRunning] = useState(false);
+    const [csvRows, setCsvRows] = useState([]);
+    const [showDetails, setShowDetails] = useState(false);
+    const [selectedChannel, setSelectedChannel] = useState('All');
 
     const handleFileUpload = (e) => {
         const file = e.target.files?.[0];
         if (file) {
             setFileObj(file);
             setUploaded(true);
+            setShowDetails(false);
+            setSelectedChannel('All');
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const text = evt.target.result;
+                const lines = text.split('\n').filter(Boolean);
+                if (lines.length < 2) return;
+                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                const rows = lines.slice(1).map(line => {
+                    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+                    return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? '']));
+                });
+                localStorage.setItem('broker_csv_data', JSON.stringify(rows));
+                setCsvRows(rows);
+            };
+            reader.readAsText(file);
         }
     };
 
@@ -39,16 +125,88 @@ const DataUploadPage = () => {
             formData.append('weights', JSON.stringify(weights));
 
             const res = await predictTriage(formData);
-
             navigate('/processing', { state: { submissionId: res?.submissionId || 'latest' } });
         } catch (error) {
             console.error('Prediction API Error:', error);
-            // Fallback for demo UX if backend is not fully ready
             navigate('/processing');
         } finally {
             setIsRunning(false);
         }
     };
+
+    // ── Apply evaluation rules to CSV rows ──────────────────────────────────
+    const processedData = useMemo(() => {
+        if (!csvRows.length) return [];
+        const activeRuleIds = (() => {
+            try { return JSON.parse(localStorage.getItem('quote_rules') || '[]'); } catch { return []; }
+        })();
+        const ruleIds = activeRuleIds.length ? activeRuleIds : Object.keys(RULE_KEY_MAP);
+        const exclusionRules = Object.fromEntries(
+            Object.entries(RULE_KEY_MAP).map(([id, key]) => [key, ruleIds.includes(id)])
+        );
+        return applyEvaluation(csvRows, exclusionRules);
+    }, [csvRows]);
+
+    // ── Derive excluded-row metrics ──────────────────────────────────────────
+    const declinedRows = useMemo(
+        () => processedData.filter(r => r.Decision === 'UW Review'),
+        [processedData]
+    );
+
+    const totalExcluded = declinedRows.length;
+    const buildingOnly = declinedRows.filter(r => r.cover_type?.toLowerCase().includes('building')).length;
+    const contentsOnly = declinedRows.filter(r => r.cover_type?.toLowerCase().includes('contents')).length;
+    const bothCoverage = declinedRows.filter(r => r.cover_type?.toLowerCase().includes('both')).length;
+
+    const reasonCounts = useMemo(() => declinedRows.reduce((acc, row) => {
+        const key = row.Reasons?.includes(',') ? 'More than one reason' : (row.Reasons?.trim() || 'Unknown');
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {}), [declinedRows]);
+
+    const channelEntries = useMemo(() => {
+        const counts = declinedRows.reduce((acc, row) => {
+            const ch = row.submission_channel || 'Unknown';
+            acc[ch] = (acc[ch] || 0) + 1;
+            return acc;
+        }, {});
+        return Object.entries(counts);
+    }, [declinedRows]);
+
+    const uniqueChannels = useMemo(
+        () => [...new Set(declinedRows.map(r => r.submission_channel).filter(Boolean))],
+        [declinedRows]
+    );
+
+    // ── Download excluded CSV ────────────────────────────────────────────────
+    const downloadExcludedCSV = () => {
+        const cols = ['submission_id', 'submission_channel', 'cover_type', 'Decision', 'Reasons'];
+        const csv = [
+            cols.join(','),
+            ...declinedRows.map(r => cols.map(c => `"${(r[c] ?? '').toString().replace(/"/g, '""')}"`).join(','))
+        ].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'Excluded_Submissions.csv'; a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // ── Dynamic SVG pie chart segments ───────────────────────────────────────
+    const pieSegments = useMemo(() => {
+        const total = declinedRows.length || 1;
+        let offset = 25; // start at top (SVG circle starts at 3 o'clock, -90° = offset of 25 out of 100)
+        return channelEntries.map(([ch, count], i) => {
+            const pct = (count / total) * 100;
+            const seg = { ch, count, pct: Math.round(pct), color: CHANNEL_COLORS[i % CHANNEL_COLORS.length], offset };
+            offset += pct;
+            return seg;
+        });
+    }, [channelEntries, declinedRows.length]);
+
+    const filteredDeclined = selectedChannel === 'All'
+        ? declinedRows
+        : declinedRows.filter(r => r.submission_channel === selectedChannel);
 
     return (
         <div className="max-w-6xl mx-auto space-y-8 pb-8">
@@ -61,15 +219,13 @@ const DataUploadPage = () => {
                     <span className="text-sm font-medium text-gray-600">Select Input Type</span>
                     <button
                         onClick={() => setInputType('csv')}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${inputType === 'csv' ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200'
-                            }`}
+                        className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${inputType === 'csv' ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200'}`}
                     >
                         CSV File
                     </button>
                     <button
                         onClick={() => setInputType('acord')}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${inputType === 'acord' ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200'
-                            }`}
+                        className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${inputType === 'acord' ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200'}`}
                     >
                         ACORD Forms
                     </button>
@@ -77,23 +233,18 @@ const DataUploadPage = () => {
 
                 <p className="text-sm text-gray-500 mb-2 text-center">Upload Property data for inference</p>
 
-                {/* Drag and Drop Zone */}
                 <div className="border border-dashed border-gray-300 rounded-xl bg-white p-8 text-center relative overflow-hidden group shadow-md transition-colors hover:border-blue-400">
                     <div className="absolute inset-0 bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-
-                    {/* Hidden actual file input */}
                     <input
                         type="file"
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
                         onChange={handleFileUpload}
                         accept=".csv,.xlsx,.xls,.pdf"
                     />
-
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10 w-full max-w-4xl mx-auto pointer-events-none">
                         <div className="text-left">
                             <h3 className="text-lg font-bold text-gray-800">Drag and drop file here</h3>
                             <p className="text-sm text-gray-500 mt-1">Limit: 200MB per file • CSV, Excel, PDF</p>
-
                             {uploaded && fileObj && (
                                 <div className="flex items-center gap-2 text-green-600 text-sm mt-4 font-medium">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -101,7 +252,6 @@ const DataUploadPage = () => {
                                 </div>
                             )}
                         </div>
-
                         <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-6 rounded-lg shadow-md transition-all text-sm whitespace-nowrap pointer-events-auto">
                             Browse Files
                         </button>
@@ -114,8 +264,6 @@ const DataUploadPage = () => {
                     {/* SECTION 2: Data Preview */}
                     <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-md">
                         <h2 className="text-lg font-bold text-gray-800 text-center mb-6">Data Preview</h2>
-
-                        {/* Stats Row */}
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
                             <StatBox label="Total Records" value="6" />
                             <StatBox label="Total Columns" value="78" />
@@ -123,8 +271,6 @@ const DataUploadPage = () => {
                             <StatBox label="Categorical Columns" value="42" />
                             <StatBox label="Duplicate Rows" value="0" />
                         </div>
-
-                        {/* Table View */}
                         <div className="border border-gray-200 rounded-lg overflow-x-auto shadow-sm">
                             <table className="w-full text-sm text-left whitespace-nowrap">
                                 <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
@@ -159,20 +305,20 @@ const DataUploadPage = () => {
 
                     <hr className="border-gray-200" />
 
-                    {/* SECTION 3: Property - Excluded Submissions */}
+                    {/* SECTION 3: Property - Excluded Submissions (dynamic) */}
                     <section id="excluded">
                         <h2 className="text-xl font-bold text-gray-800 text-center mb-6">Property - Excluded Submissions</h2>
 
-                        {/* Stats Row */}
+                        {/* KPI boxes */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-                            <StatBox label="Total Excluded Submissions" value={<span className="text-blue-600">6</span>} />
-                            <StatBox label="Building Only" value={<span className="text-blue-600">3</span>} />
-                            <StatBox label="Content Only" value={<span className="text-blue-600">2</span>} />
-                            <StatBox label="Both Coverage" value={<span className="text-blue-600">1</span>} />
+                            <StatBox label="Total Excluded Submissions" value={<span className="text-blue-600">{totalExcluded}</span>} />
+                            <StatBox label="Building Only" value={<span className="text-blue-600">{buildingOnly}</span>} />
+                            <StatBox label="Content Only" value={<span className="text-blue-600">{contentsOnly}</span>} />
+                            <StatBox label="Both Coverage" value={<span className="text-blue-600">{bothCoverage}</span>} />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-6">
-                            {/* Excluded Summary Table */}
+                            {/* Reason summary table + controls */}
                             <div className="md:col-span-2">
                                 <h3 className="text-center font-bold text-gray-800 mb-4">Excluded Submissions Summary</h3>
                                 <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
@@ -184,61 +330,137 @@ const DataUploadPage = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-100">
-                                            <tr className="bg-white hover:bg-gray-50 transition-colors">
-                                                <td className="px-4 py-3 text-gray-700">More than one reason</td>
-                                                <td className="px-4 py-3 text-center font-medium text-gray-700">6</td>
-                                            </tr>
-                                            <tr className="bg-blue-50/30 border-t border-gray-200 font-bold">
-                                                <td className="px-4 py-3 text-gray-800">Total</td>
-                                                <td className="px-4 py-3 text-center text-gray-800">6</td>
-                                            </tr>
+                                            {totalExcluded === 0 ? (
+                                                <tr>
+                                                    <td colSpan={2} className="px-4 py-6 text-center text-gray-400 text-sm">
+                                                        No rows excluded — all submissions pass the active rules.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                <>
+                                                    {Object.entries(reasonCounts).map(([reason, count], idx) => (
+                                                        <tr key={idx} className="bg-white hover:bg-gray-50 transition-colors">
+                                                            <td className="px-4 py-3 text-gray-700">{reason}</td>
+                                                            <td className="px-4 py-3 text-center font-medium text-gray-700">{count}</td>
+                                                        </tr>
+                                                    ))}
+                                                    <tr className="bg-blue-50/30 border-t border-gray-200 font-bold">
+                                                        <td className="px-4 py-3 text-gray-800">Total</td>
+                                                        <td className="px-4 py-3 text-center text-gray-800">{totalExcluded}</td>
+                                                    </tr>
+                                                </>
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>
 
-                                <div className="mt-8">
-                                    <div className="flex items-center gap-2 cursor-pointer text-sm text-blue-600 hover:text-blue-800 transition-colors font-medium">
-                                        <span>Show detailed excluded submissions:</span>
-                                        <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20"><path d="M5 7l5 5 5-5H5z" /></svg>
-                                    </div>
+                                <div className="mt-6 space-y-3">
+                                    {/* Toggle detail table */}
+                                    <button
+                                        onClick={() => setShowDetails(v => !v)}
+                                        className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 transition-colors font-medium"
+                                    >
+                                        <span>{showDetails ? 'Hide' : 'Show'} detailed excluded submissions</span>
+                                        <svg
+                                            className={`w-4 h-4 fill-current transition-transform ${showDetails ? 'rotate-180' : ''}`}
+                                            viewBox="0 0 20 20"
+                                        >
+                                            <path d="M5 7l5 5 5-5H5z" />
+                                        </svg>
+                                    </button>
 
-                                    <button className="mt-4 bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-6 rounded-lg border border-gray-300 shadow-sm transition-colors text-sm">
+                                    <button
+                                        onClick={downloadExcludedCSV}
+                                        disabled={totalExcluded === 0}
+                                        className="bg-white hover:bg-gray-50 text-gray-700 font-medium py-2 px-6 rounded-lg border border-gray-300 shadow-sm transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
                                         Download Excluded Submissions CSV
                                     </button>
                                 </div>
+
+                                {/* Expandable detail table */}
+                                {showDetails && totalExcluded > 0 && (
+                                    <div className="mt-5">
+                                        {uniqueChannels.length > 0 && (
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Filter by Channel</label>
+                                                <select
+                                                    value={selectedChannel}
+                                                    onChange={e => setSelectedChannel(e.target.value)}
+                                                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                                                >
+                                                    <option value="All">All Channels</option>
+                                                    {uniqueChannels.map(ch => <option key={ch} value={ch}>{ch}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+                                        <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm overflow-x-auto max-h-72 overflow-y-auto">
+                                            <table className="w-full text-sm text-left whitespace-nowrap">
+                                                <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 sticky top-0">
+                                                    <tr>
+                                                        <th className="px-4 py-3">Submission ID</th>
+                                                        <th className="px-4 py-3">Channel</th>
+                                                        <th className="px-4 py-3">Cover Type</th>
+                                                        <th className="px-4 py-3">Reason(s)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {filteredDeclined.map((row, idx) => (
+                                                        <tr key={idx} className="bg-white hover:bg-gray-50 transition-colors">
+                                                            <td className="px-4 py-2.5 text-gray-800 font-medium">{row.submission_id || '—'}</td>
+                                                            <td className="px-4 py-2.5 text-gray-600">{row.submission_channel || '—'}</td>
+                                                            <td className="px-4 py-2.5 text-gray-600">{row.cover_type || '—'}</td>
+                                                            <td className="px-4 py-2.5 text-gray-500 text-xs max-w-xs">{row.Reasons}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Pie Chart */}
+                            {/* Dynamic CSS pie chart */}
                             <div className="flex flex-col items-center bg-white border border-gray-200 p-6 rounded-xl shadow-sm">
                                 <h3 className="text-center font-bold text-gray-800 mb-4">Channel-wise Distribution</h3>
 
-                                <div className="relative w-48 h-48 my-4">
-                                    {/* Simple CSS-based pie chart matching screenshot #4 */}
-                                    <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90 rounded-full drop-shadow-md">
-                                        <circle r="16" cx="16" cy="16" fill="#1e3a8a" /> {/* Dark blue bg */}
-                                        <circle
-                                            r="16" cx="16" cy="16"
-                                            fill="transparent"
-                                            stroke="#3b82f6" /* Light blue stroke for 83% */
-                                            strokeWidth="32"
-                                            strokeDasharray="83 100"
-                                        />
-                                    </svg>
-                                    {/* Labels on pie chart */}
-                                    <div className="absolute top-8 -left-4 text-blue-600 font-bold text-xs">83%</div>
-                                    <div className="absolute bottom-8 -right-4 text-blue-800 font-bold text-xs">17%</div>
-                                </div>
+                                {totalExcluded === 0 ? (
+                                    <div className="flex-1 flex items-center justify-center text-gray-400 text-sm text-center py-8">
+                                        No excluded submissions to display
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="relative w-44 h-44 my-4">
+                                            <svg viewBox="0 0 32 32" className="w-full h-full -rotate-90 rounded-full drop-shadow-md">
+                                                <circle r="16" cx="16" cy="16" fill="#e5e7eb" />
+                                                {pieSegments.map((seg, i) => (
+                                                    <circle
+                                                        key={i}
+                                                        r="16" cx="16" cy="16"
+                                                        fill="transparent"
+                                                        stroke={seg.color}
+                                                        strokeWidth="32"
+                                                        strokeDasharray={`${seg.pct} 100`}
+                                                        strokeDashoffset={-seg.offset + 25}
+                                                    />
+                                                ))}
+                                            </svg>
+                                            {/* Center label */}
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <span className="text-xs font-bold text-gray-700">{totalExcluded}</span>
+                                            </div>
+                                        </div>
 
-                                <div className="flex items-center gap-4 mt-6">
-                                    <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
-                                        <span className="w-3 h-3 bg-blue-500 rounded-sm shadow-sm"></span>
-                                        Broker
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
-                                        <span className="w-3 h-3 bg-[#1e3a8a] rounded-sm shadow-sm"></span>
-                                        Online
-                                    </div>
-                                </div>
+                                        <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
+                                            {pieSegments.map((seg, i) => (
+                                                <div key={i} className="flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+                                                    <span className="w-3 h-3 rounded-sm shadow-sm flex-shrink-0" style={{ backgroundColor: seg.color }}></span>
+                                                    {seg.ch} ({seg.pct}%)
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </section>

@@ -156,7 +156,7 @@ export default function PipelineAnimation() {
 
   /* --- compute scale on mount and resize --- */
   useEffect(() => {
-    const HEADER_H = 60;
+    const HEADER_H = 40;
     const PADDING = 24;
 
     function computeScale() {
@@ -229,7 +229,7 @@ export default function PipelineAnimation() {
     <div className="bg-gray-50 flex flex-col w-full h-full" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
       {/* Cleaned up Inner Header to avoid double bounding boxes with Layout */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between w-full" style={{ flexShrink: 0 }}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between w-full" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}

@@ -7,8 +7,9 @@ const AdminLayout = ({ children }) => {
     const hasPropensityParam = !!searchParams.get('propensity');
 
     const adminLinks = [
-        { name: 'Admin Panel', path: '/' },
-        { name: 'Data Upload', path: '/upload' },
+        { name: 'Admin Panel', path: '/admin' },
+        { name: 'Propensity Engine', path: '/upload' },
+        { name: 'Broker Performance', path: '/broker-performance' },
     ];
 
     return (
@@ -27,13 +28,15 @@ const AdminLayout = ({ children }) => {
                                 let isActive = false;
                                 const pathname = location.pathname;
 
-                                if (link.path === '/') {
-                                    isActive = pathname === '/';
+                                if (link.path === '/admin') {
+                                    isActive = pathname === '/admin';
                                 } else if (link.path === '/upload') {
                                     isActive = pathname.startsWith('/upload') ||
                                         pathname.startsWith('/processing') ||
                                         pathname.startsWith('/triage') ||
                                         pathname.startsWith('/property');
+                                } else if (link.path === '/broker-performance') {
+                                    isActive = pathname.startsWith('/broker-performance');
                                 }
 
                                 return (

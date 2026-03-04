@@ -1,11 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
 
 const LandingPage = () => {
   const navigate = useNavigate();
-  const decisionUrl = import.meta.env.VITE_DECISION_APP_URL || `${window.location.origin}/decision`;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-slate-100 flex items-center justify-center p-6">
       <div className="w-full max-w-5xl">
@@ -55,10 +52,10 @@ const LandingPage = () => {
 
               {/* Next Button */}
               <button
-                onClick={() => navigate('/overview')}
+                onClick={() => navigate('/admin')}
                 className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3.5 rounded-xl shadow-lg shadow-blue-200 transition-all duration-200 hover:shadow-blue-300 hover:-translate-y-0.5 self-start"
               >
-                Start Presenter View
+                Start
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
@@ -72,25 +69,6 @@ const LandingPage = () => {
                 <h2 className="text-2xl font-bold">Scan to Begin</h2>
                 <p className="text-blue-200 text-sm mt-1">Open on your device to submit decisions</p>
               </div>
-
-              {/* QR Code */}
-              <div className="bg-white rounded-2xl p-5 shadow-2xl mb-6">
-                <QRCodeSVG
-                  value={decisionUrl}
-                  size={180}
-                  bgColor="#ffffff"
-                  fgColor="#1e3a5f"
-                  level="M"
-                  includeMargin={false}
-                />
-              </div>
-
-              {/* <div className="text-center">
-                <p className="text-blue-200 text-xs">Or navigate to:</p>
-                <p className="text-white font-mono text-sm font-semibold mt-1 bg-blue-700/50 rounded-lg px-3 py-1.5">
-                  /decision
-                </p>
-              </div> */}
 
               {/* Feature bullets */}
               <div className="mt-8 space-y-2 w-full">

@@ -8,17 +8,21 @@ import DataUploadPage from './pages/DataUploadPage';
 import PipelineAnimation from './pages/PipelineAnimation';
 import PropertyDetail from './pages/PropertyDetail';
 import TriagePage from './pages/TriagePage';
+import BrokerPerformancePage from './pages/BrokerPerformancePage';
+import LandingPage from './pages/LandingPage';
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<AdminLayout><AdminConfigPage /></AdminLayout>} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/admin" element={<AdminLayout><AdminConfigPage /></AdminLayout>} />
         <Route path="/upload" element={<AdminLayout><DataUploadPage /></AdminLayout>} />
 
         <Route path="/processing" element={<AdminLayout><PipelineAnimation /></AdminLayout>} />
         <Route path="/property/:id" element={<AdminLayout><PropertyDetail /></AdminLayout>} />
         <Route path="/triage" element={<AdminLayout><TriagePage /></AdminLayout>} />
+        <Route path="/broker-performance" element={<AdminLayout><BrokerPerformancePage /></AdminLayout>} />
       </Routes>
     </Router>
   );

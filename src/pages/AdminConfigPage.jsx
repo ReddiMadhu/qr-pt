@@ -21,10 +21,19 @@ const PREDEFINED_PROFILES = {
 
 const AdminConfigPage = () => {
     // --- Exclusion Rules State ---
-    const [selectedRules, setSelectedRules] = useState(RULES_DATA.map(r => r.id)); // All selected by default based on screenshot
+    const [selectedRules, setSelectedRules] = useState(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem('quote_rules') || '[]');
+            return saved.length ? saved : RULES_DATA.map(r => r.id);
+        } catch { return RULES_DATA.map(r => r.id); }
+    });
 
     const handleRuleToggle = (id) => {
-        setSelectedRules(prev => prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id]);
+        setSelectedRules(prev => {
+            const next = prev.includes(id) ? prev.filter(r => r !== id) : [...prev, id];
+            localStorage.setItem('quote_rules', JSON.stringify(next));
+            return next;
+        });
     };
 
     // --- Risk Weights State ---
