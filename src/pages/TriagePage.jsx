@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchTriageProperties, sendLetterOfIntent, sendTriageEmails } from '../services/api';
 import { usePropensity } from '../context/PropensityContext';
+import ShapDrivers from '../components/ShapDrivers';
+import { mockResultsNew } from '../data/mockData';
 
 const TIER_BADGE = {
   High: 'bg-green-100 text-green-700 border-green-300',
@@ -47,6 +49,11 @@ const TriagePage = () => {
 
   const rawPropensity = searchParams.get('propensity');
   const hasValidPropensityParam = rawPropensity && ['high', 'mid', 'low', 'medium'].includes(rawPropensity.toLowerCase());
+
+  // Compute global SHAP for the right column
+  const globalShap = mockResultsNew?.global_shap
+    ? mockResultsNew.global_shap.map((s) => ({ feature: s.feature, contribution: s.mean_abs_shap, value: s.value }))
+    : [];
 
   useEffect(() => {
     const load = async () => {
@@ -196,127 +203,134 @@ const TriagePage = () => {
             <p className="text-gray-500 text-lg">No submissions found.</p>
           </div>
         ) : (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-200 border-b border-gray-300">
-                  <tr>
-                    <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Property</th>
-                    <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Propensity Score</th>
-                    <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Cover Type</th>
-                    <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Building Coverage</th>
-                    <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Contents Coverage</th>
-                    <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">State</th>
-                    <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredProperties.map((property) => {
-                    const scorePct = property.quote_propensity != null
-                      ? Math.round(property.quote_propensity * 100)
-                      : '—';
-                    const tier = getTier(property.quote_propensity_label);
-                    return (
-                      <tr key={property.submission_id || property.id} className="hover:bg-gray-50 transition-colors">
-                        {/* Property Column */}
-                        <td className="px-3 py-2">
-                          <div className="flex items-center space-x-4">
-                            <div className="relative">
-                              <img
-                                src={property.imageUrl}
-                                alt={property.property_county}
-                                className="w-20 h-20 rounded-lg object-cover shadow-sm"
-                              />
-                              <div className="absolute -top-2 -left-2 bg-blue-600 text-white font-bold text-xs px-2 py-0.5 rounded shadow-md">
-                                {property.propertyId}
+          <div className="flex flex-col lg:flex-row gap-3">
+            {/* LEFT SIDE - Table */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden lg:w-[75%]">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-200 border-b border-gray-300">
+                    <tr>
+                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Property</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Propensity Score</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Cover Type</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Building Coverage</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Contents Coverage</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">State</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredProperties.map((property) => {
+                      const scorePct = property.quote_propensity != null
+                        ? Math.round(property.quote_propensity * 100)
+                        : '—';
+                      const tier = getTier(property.quote_propensity_label);
+                      return (
+                        <tr key={property.submission_id || property.id} className="hover:bg-gray-50 transition-colors">
+                          {/* Property Column */}
+                          <td className="px-3 py-2">
+                            <div className="flex items-center space-x-4">
+                              <div className="relative">
+                                <img
+                                  src={property.imageUrl}
+                                  alt={property.property_county}
+                                  className="w-20 h-20 rounded-lg object-cover shadow-sm"
+                                />
+                                <div className="absolute -top-2 -left-2 bg-blue-600 text-white font-bold text-xs px-2 py-0.5 rounded shadow-md">
+                                  {property.propertyId}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="font-semibold text-gray-900">{property.property_county}</div>
+                                <div className="text-sm text-gray-600">{property.occupancy_type}</div>
+                                <div className="text-sm font-bold text-gray-900 mt-1">
+                                  {formatCurrency(property.property_value)}
+                                </div>
                               </div>
                             </div>
-                            <div>
-                              <div className="font-semibold text-gray-900">{property.property_county}</div>
-                              <div className="text-sm text-gray-600">{property.occupancy_type}</div>
-                              <div className="text-sm font-bold text-gray-900 mt-1">
-                                {formatCurrency(property.property_value)}
-                              </div>
+                          </td>
+
+                          {/* Propensity Score */}
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col gap-1">
+                              <span className={`text-lg font-extrabold ${TIER_SCORE_COLOR[tier]}`}>
+                                {scorePct}%
+                              </span>
+                              <span className={`text-xs font-medium border rounded-full px-2 py-0.5 w-fit ${TIER_BADGE[tier]}`}>
+                                {property.quote_propensity_label ?? tier}
+                              </span>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Propensity Score */}
-                        <td className="px-3 py-2">
-                          <div className="flex flex-col gap-1">
-                            <span className={`text-lg font-extrabold ${TIER_SCORE_COLOR[tier]}`}>
-                              {scorePct}%
+                          {/* Cover Type */}
+                          <td className="px-3 py-2">
+                            <span className="text-sm text-gray-700">{property.cover_type || '—'}</span>
+                          </td>
+
+                          {/* Building Coverage Limit */}
+                          <td className="px-3 py-2">
+                            <span className="text-sm font-medium text-gray-800">
+                              {property.building_coverage_limit
+                                ? formatCurrency(property.building_coverage_limit)
+                                : <span className="text-gray-400">—</span>}
                             </span>
-                            <span className={`text-xs font-medium border rounded-full px-2 py-0.5 w-fit ${TIER_BADGE[tier]}`}>
-                              {property.quote_propensity_label ?? tier}
+                          </td>
+
+                          {/* Contents Coverage Limit */}
+                          <td className="px-3 py-2">
+                            <span className="text-sm font-medium text-gray-800">
+                              {property.contents_coverage_limit
+                                ? formatCurrency(property.contents_coverage_limit)
+                                : <span className="text-gray-400">—</span>}
                             </span>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Cover Type */}
-                        <td className="px-3 py-2">
-                          <span className="text-sm text-gray-700">{property.cover_type || '—'}</span>
-                        </td>
+                          {/* State */}
+                          <td className="px-3 py-2">
+                            <span className="text-sm font-semibold text-gray-700">{property.state || '—'}</span>
+                          </td>
 
-                        {/* Building Coverage Limit */}
-                        <td className="px-3 py-2">
-                          <span className="text-sm font-medium text-gray-800">
-                            {property.building_coverage_limit
-                              ? formatCurrency(property.building_coverage_limit)
-                              : <span className="text-gray-400">—</span>}
-                          </span>
-                        </td>
-
-                        {/* Contents Coverage Limit */}
-                        <td className="px-3 py-2">
-                          <span className="text-sm font-medium text-gray-800">
-                            {property.contents_coverage_limit
-                              ? formatCurrency(property.contents_coverage_limit)
-                              : <span className="text-gray-400">—</span>}
-                          </span>
-                        </td>
-
-                        {/* State */}
-                        <td className="px-3 py-2">
-                          <span className="text-sm font-semibold text-gray-700">{property.state || '—'}</span>
-                        </td>
-
-                        {/* View Details + Send Letter */}
-                        <td className="px-3 py-2">
-                          <div className="flex flex-col gap-1.5">
-                            <button
-                              onClick={() => {
-                                const qString = searchParams.toString();
-                                navigate(`/property/${property.submission_id || property.id}${qString ? `?${qString}` : ''}`, {
-                                  state: { property, fromTriage: true },
-                                });
-                              }}
-                              className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors inline-flex items-center gap-1.5"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                              View Details
-                            </button>
-                            {hasValidPropensityParam && (
+                          {/* View Details + Send Letter */}
+                          <td className="px-3 py-2">
+                            <div className="flex flex-col gap-1.5">
                               <button
-                                onClick={() => { setLetterModal(property); setLetterResult(null); setJustification(''); }}
-                                className="px-3 py-1.5 rounded-md text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 transition-colors inline-flex items-center gap-1.5"
+                                onClick={() => {
+                                  const qString = searchParams.toString();
+                                  navigate(`/property/${property.submission_id || property.id}${qString ? `?${qString}` : ''}`, {
+                                    state: { property, fromTriage: true },
+                                  });
+                                }}
+                                className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors inline-flex items-center gap-1.5"
                               >
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                 </svg>
-                                Send Letter
+                                View Details
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                              {hasValidPropensityParam && (
+                                <button
+                                  onClick={() => { setLetterModal(property); setLetterResult(null); setJustification(''); }}
+                                  className="px-3 py-1.5 rounded-md text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 transition-colors inline-flex items-center gap-1.5"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Send Letter
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {/* RIGHT SIDE - SHAP Drivers */}
+            <div className="lg:w-[25%] flex flex-col gap-3">
+              <ShapDrivers drivers={globalShap} />
             </div>
           </div>
         )}

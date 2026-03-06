@@ -136,8 +136,11 @@ const BrokerPerformancePage = () => {
         );
         if (!brokerIdCol) return [];
 
+        // Exclude online brokers
+        const validCsvData = csvData.filter(row => row.broker_type?.toLowerCase() !== 'online');
+
         // Group by broker id
-        const grouped = csvData.reduce((acc, row) => {
+        const grouped = validCsvData.reduce((acc, row) => {
             const key = row[brokerIdCol] || 'Unknown';
             if (!acc[key]) acc[key] = [];
             acc[key].push(row);
