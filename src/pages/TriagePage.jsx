@@ -210,13 +210,12 @@ const TriagePage = () => {
                 <table className="w-full">
                   <thead className="bg-gray-200 border-b border-gray-300">
                     <tr>
-                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Property</th>
-                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Propensity Score</th>
-                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Cover Type</th>
-                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Building Coverage</th>
-                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Contents Coverage</th>
-                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">State</th>
-                      <th className="px-3 pt-2 pb-2 text-left text-sm font-semibold text-gray-800">Action</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Property</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Propensity Score</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Cover Type</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Building Coverage</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Contents Coverage</th>
+                      <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -229,21 +228,24 @@ const TriagePage = () => {
                         <tr key={property.submission_id || property.id} className="hover:bg-gray-50 transition-colors">
                           {/* Property Column */}
                           <td className="px-3 py-2">
-                            <div className="flex items-center space-x-4">
-                              <div className="relative">
+                            <div className="flex items-center space-x-3">
+                              <div className="relative shrink-0">
                                 <img
                                   src={property.imageUrl}
                                   alt={property.property_county}
-                                  className="w-20 h-20 rounded-lg object-cover shadow-sm"
+                                  className="w-16 h-16 rounded-lg object-cover shadow-sm"
                                 />
-                                <div className="absolute -top-2 -left-2 bg-blue-600 text-white font-bold text-xs px-2 py-0.5 rounded shadow-md">
+                                <div className="absolute -top-1.5 -left-1.5 bg-blue-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded shadow-md">
                                   {property.propertyId}
                                 </div>
                               </div>
-                              <div>
-                                <div className="font-semibold text-gray-900">{property.property_county}</div>
-                                <div className="text-sm text-gray-600">{property.occupancy_type}</div>
-                                <div className="text-sm font-bold text-gray-900 mt-1">
+                              <div className="min-w-0">
+                                <div className="font-semibold text-sm text-gray-900 truncate">{property.property_county}</div>
+                                <div className="text-xs text-gray-600 truncate">{property.occupancy_type}</div>
+                                <div className="text-xs text-gray-500 mt-0.5 line-clamp-1" title={property.description || 'Property details'}>
+                                  {property.description || 'Standard multi-family residence'}
+                                </div>
+                                <div className="text-xs font-bold text-gray-900 mt-0.5">
                                   {formatCurrency(property.property_value)}
                                 </div>
                               </div>
@@ -252,11 +254,11 @@ const TriagePage = () => {
 
                           {/* Propensity Score */}
                           <td className="px-3 py-2">
-                            <div className="flex flex-col gap-1">
-                              <span className={`text-lg font-extrabold ${TIER_SCORE_COLOR[tier]}`}>
+                            <div className="flex flex-col gap-0.5">
+                              <span className={`text-base font-extrabold ${TIER_SCORE_COLOR[tier]}`}>
                                 {scorePct}%
                               </span>
-                              <span className={`text-xs font-medium border rounded-full px-2 py-0.5 w-fit ${TIER_BADGE[tier]}`}>
+                              <span className={`text-[10px] font-medium border rounded-full px-2 py-0.5 w-fit ${TIER_BADGE[tier]}`}>
                                 {property.quote_propensity_label ?? tier}
                               </span>
                             </div>
@@ -264,12 +266,12 @@ const TriagePage = () => {
 
                           {/* Cover Type */}
                           <td className="px-3 py-2">
-                            <span className="text-sm text-gray-700">{property.cover_type || '—'}</span>
+                            <span className="text-xs text-gray-700">{property.cover_type || '—'}</span>
                           </td>
 
                           {/* Building Coverage Limit */}
                           <td className="px-3 py-2">
-                            <span className="text-sm font-medium text-gray-800">
+                            <span className="text-xs font-medium text-gray-800">
                               {property.building_coverage_limit
                                 ? formatCurrency(property.building_coverage_limit)
                                 : <span className="text-gray-400">—</span>}
@@ -278,19 +280,14 @@ const TriagePage = () => {
 
                           {/* Contents Coverage Limit */}
                           <td className="px-3 py-2">
-                            <span className="text-sm font-medium text-gray-800">
+                            <span className="text-xs font-medium text-gray-800">
                               {property.contents_coverage_limit
                                 ? formatCurrency(property.contents_coverage_limit)
                                 : <span className="text-gray-400">—</span>}
                             </span>
                           </td>
 
-                          {/* State */}
-                          <td className="px-3 py-2">
-                            <span className="text-sm font-semibold text-gray-700">{property.state || '—'}</span>
-                          </td>
-
-                          {/* View Details + Send Letter */}
+                          {/* Action Buttons */}
                           <td className="px-3 py-2">
                             <div className="flex flex-col gap-1.5">
                               <button
