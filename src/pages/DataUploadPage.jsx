@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { predictTriage } from '../services/api';
+import { usePropensity } from '../context/PropensityContext';
 
 // ─── Exclusion rule ID → applyEvaluation boolean key mapping ──────────────────
 const RULE_KEY_MAP = {
@@ -16,11 +16,11 @@ const RULE_KEY_MAP = {
 };
 
 const VALID_STATE_CODES = [
-    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
-    'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
-    'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
-    'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
-    'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
 ];
 
 // ─── Evaluation logic (adapted from ExcludedDashboard reference code) ─────────
@@ -80,11 +80,14 @@ const MOCK_DATA = [
 
 const DataUploadPage = () => {
     const navigate = useNavigate();
+    const {
+        csvRows, setCsvRows,
+        uploaded, setUploaded,
+        fileObj, setFileObj
+    } = usePropensity();
+
     const [inputType, setInputType] = useState('csv');
-    const [uploaded, setUploaded] = useState(false);
-    const [fileObj, setFileObj] = useState(null);
     const [isRunning, setIsRunning] = useState(false);
-    const [csvRows, setCsvRows] = useState([]);
     const [showDetails, setShowDetails] = useState(false);
     const [selectedChannel, setSelectedChannel] = useState('All');
 
@@ -105,7 +108,6 @@ const DataUploadPage = () => {
                     const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
                     return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? '']));
                 });
-                localStorage.setItem('broker_csv_data', JSON.stringify(rows));
                 setCsvRows(rows);
             };
             reader.readAsText(file);
@@ -116,18 +118,6 @@ const DataUploadPage = () => {
         if (!fileObj) return;
         setIsRunning(true);
         try {
-            const rules = JSON.parse(localStorage.getItem('quote_rules') || '[]');
-            const weights = JSON.parse(localStorage.getItem('quote_weights') || '{}');
-
-            const formData = new FormData();
-            formData.append('file', fileObj);
-            formData.append('rules', JSON.stringify(rules));
-            formData.append('weights', JSON.stringify(weights));
-
-            const res = await predictTriage(formData);
-            navigate('/processing', { state: { submissionId: res?.submissionId || 'latest' } });
-        } catch (error) {
-            console.error('Prediction API Error:', error);
             navigate('/processing');
         } finally {
             setIsRunning(false);

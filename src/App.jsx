@@ -11,20 +11,24 @@ import TriagePage from './pages/TriagePage';
 import BrokerPerformancePage from './pages/BrokerPerformancePage';
 import LandingPage from './pages/LandingPage';
 
+import { PropensityProvider } from './context/PropensityContext';
+
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/admin" element={<AdminLayout><AdminConfigPage /></AdminLayout>} />
-        <Route path="/upload" element={<AdminLayout><DataUploadPage /></AdminLayout>} />
+    <PropensityProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/admin" element={<AdminLayout><AdminConfigPage /></AdminLayout>} />
+          <Route path="/upload" element={<AdminLayout><DataUploadPage /></AdminLayout>} />
 
-        <Route path="/processing" element={<AdminLayout><PipelineAnimation /></AdminLayout>} />
-        <Route path="/property/:id" element={<AdminLayout><PropertyDetail /></AdminLayout>} />
-        <Route path="/triage" element={<AdminLayout><TriagePage /></AdminLayout>} />
-        <Route path="/broker-performance" element={<AdminLayout><BrokerPerformancePage /></AdminLayout>} />
-      </Routes>
-    </Router>
+          <Route path="/processing" element={<AdminLayout><PipelineAnimation /></AdminLayout>} />
+          <Route path="/property/:id" element={<AdminLayout><PropertyDetail /></AdminLayout>} />
+          <Route path="/triage" element={<AdminLayout><TriagePage /></AdminLayout>} />
+          <Route path="/broker-performance" element={<AdminLayout><BrokerPerformancePage /></AdminLayout>} />
+        </Routes>
+      </Router>
+    </PropensityProvider>
   );
 }
 

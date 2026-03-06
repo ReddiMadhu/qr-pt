@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fetchTriageProperties, sendLetterOfIntent, sendTriageEmails } from '../services/api';
+import { usePropensity } from '../context/PropensityContext';
 
 const TIER_BADGE = {
   High: 'bg-green-100 text-green-700 border-green-300',
@@ -25,8 +26,12 @@ const formatCurrency = (value) => {
 
 const TriagePage = () => {
   const [searchParams] = useSearchParams();
-  const [properties, setProperties] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    properties, setProperties,
+    smartAssignResults, setSmartAssignResults
+  } = usePropensity();
+
+  const [loading, setLoading] = useState(properties.length === 0);
   const [letterModal, setLetterModal] = useState(null);
   const [letterSending, setLetterSending] = useState(false);
   const [letterResult, setLetterResult] = useState(null);
@@ -34,8 +39,8 @@ const TriagePage = () => {
 
   // Smart Assign State
   const [smartAssignModal, setSmartAssignModal] = useState(false);
-  const [smartAssignPhase, setSmartAssignPhase] = useState('idle'); // idle | processing | complete
-  const [smartRoutingCounts, setSmartRoutingCounts] = useState({ bpo: 0, assistable: 0, complex: 0, lowCount: 0, highHighCount: 0, highLowCount: 0, midCount: 0 });
+  const [smartAssignPhase, setSmartAssignPhase] = useState(smartAssignResults ? 'complete' : 'idle'); // idle | processing | complete
+  const [smartRoutingCounts, setSmartRoutingCounts] = useState(smartAssignResults || { bpo: 0, assistable: 0, complex: 0, lowCount: 0, highHighCount: 0, highLowCount: 0, midCount: 0 });
   const [pipelineStep, setPipelineStep] = useState(0);
 
   const navigate = useNavigate();
@@ -45,13 +50,17 @@ const TriagePage = () => {
 
   useEffect(() => {
     const load = async () => {
+      if (properties.length > 0) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       const data = await fetchTriageProperties();
       setProperties(data);
       setLoading(false);
     };
     load();
-  }, []);
+  }, [properties.length, setProperties]);
 
   // Derive tier from quote_propensity_label (e.g. "High Propensity" → "High")
   const getTier = (label) => {
@@ -113,12 +122,14 @@ const TriagePage = () => {
       else highLowCount++;
     });
 
-    setSmartRoutingCounts({
+    const counts = {
       bpo: lowCount + highLowCount,
       assistable: highHighCount,
       complex: midCount,
       lowCount, highHighCount, highLowCount, midCount,
-    });
+    };
+
+    setSmartRoutingCounts(counts);
 
     // Background API call + animation timer
     const process = async () => {
@@ -129,6 +140,7 @@ const TriagePage = () => {
       }
       setTimeout(() => {
         setSmartAssignPhase('complete');
+        setSmartAssignResults(counts);
       }, 4000); // 4 second animation duration
     };
     process();
@@ -455,7 +467,7 @@ const TriagePage = () => {
                     {/* Branch y-centres: Low=50, HighHigh=100, HighLow=160, Mid=210       */}
                     {pipelineStep >= 1 && (
                       <>
-                        <polyline points="150,130 200,130 200,50  290,50"  fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
+                        <polyline points="150,130 200,130 200,50  290,50" fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
                         <polyline points="150,130 200,130 200,100 290,100" fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
                         <polyline points="150,130 200,130 200,160 290,160" fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
                         <polyline points="150,130 200,130 200,210 290,210" fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
@@ -467,25 +479,25 @@ const TriagePage = () => {
                       <>
                         {/* Low Propensity — y=50 */}
                         <rect x="290" y="37" width="230" height="26" rx="6" fill="#f9fafb" stroke="#e5e7eb" strokeWidth="1" />
-                        <rect x="290" y="37" width="4"   height="26" rx="2" fill="#ef4444" />
+                        <rect x="290" y="37" width="4" height="26" rx="2" fill="#ef4444" />
                         <text x="302" y="54" fill="#374151" fontSize="10" fontWeight="600">Low Propensity</text>
                         <text x="512" y="54" textAnchor="end" fill="#111827" fontSize="12" fontWeight="900">{smartRoutingCounts.lowCount}</text>
 
                         {/* High + Low Cov — y=100 */}
                         <rect x="290" y="87" width="230" height="26" rx="6" fill="#f9fafb" stroke="#e5e7eb" strokeWidth="1" />
-                        <rect x="290" y="87" width="4"   height="26" rx="2" fill="#f97316" />
+                        <rect x="290" y="87" width="4" height="26" rx="2" fill="#f97316" />
                         <text x="302" y="104" fill="#374151" fontSize="10" fontWeight="600">High + Low Cov (≤$500k)</text>
                         <text x="512" y="104" textAnchor="end" fill="#111827" fontSize="12" fontWeight="900">{smartRoutingCounts.highLowCount}</text>
 
                         {/* High + High Cov — y=160 */}
                         <rect x="290" y="147" width="230" height="26" rx="6" fill="#f9fafb" stroke="#e5e7eb" strokeWidth="1" />
-                        <rect x="290" y="147" width="4"   height="26" rx="2" fill="#22c55e" />
+                        <rect x="290" y="147" width="4" height="26" rx="2" fill="#22c55e" />
                         <text x="302" y="164" fill="#374151" fontSize="10" fontWeight="600">High + High Cov (&gt;$500k)</text>
                         <text x="512" y="164" textAnchor="end" fill="#111827" fontSize="12" fontWeight="900">{smartRoutingCounts.highHighCount}</text>
 
                         {/* Mid Propensity — y=210 */}
                         <rect x="290" y="197" width="230" height="26" rx="6" fill="#f9fafb" stroke="#e5e7eb" strokeWidth="1" />
-                        <rect x="290" y="197" width="4"   height="26" rx="2" fill="#a855f7" />
+                        <rect x="290" y="197" width="4" height="26" rx="2" fill="#a855f7" />
                         <text x="302" y="214" fill="#374151" fontSize="10" fontWeight="600">Mid Propensity</text>
                         <text x="512" y="214" textAnchor="end" fill="#111827" fontSize="12" fontWeight="900">{smartRoutingCounts.midCount}</text>
                       </>
@@ -496,9 +508,9 @@ const TriagePage = () => {
                     {pipelineStep >= 2 && (
                       <>
                         {/* Low      → BPO */}
-                        <polyline points="520,50  570,50  570,80  620,80"  fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
+                        <polyline points="520,50  570,50  570,80  620,80" fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
                         {/* HighLow  → BPO */}
-                        <polyline points="520,100 570,100 570,80  620,80"  fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
+                        <polyline points="520,100 570,100 570,80  620,80" fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
                         {/* HighHigh → Assistable */}
                         <polyline points="520,160 570,160 570,130 620,130" fill="none" className="path-smart-progress" stroke="#3b82f6" markerEnd="url(#arr-blue)" />
                         {/* Mid      → Complex */}
@@ -526,8 +538,8 @@ const TriagePage = () => {
                     {/* ── Envelope badges on queue nodes (step 3) ── */}
                     {pipelineStep >= 3 && (
                       <>
-                        <rect x="798" y="54"  width="18" height="13" rx="2" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
-                        <polyline points="798,54  807,63  816,54"  fill="none" stroke="#1d4ed8" strokeWidth="1.5" />
+                        <rect x="798" y="54" width="18" height="13" rx="2" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
+                        <polyline points="798,54  807,63  816,54" fill="none" stroke="#1d4ed8" strokeWidth="1.5" />
                         <rect x="798" y="104" width="18" height="13" rx="2" fill="white" stroke="#4f46e5" strokeWidth="1.5" />
                         <polyline points="798,104 807,113 816,104" fill="none" stroke="#4f46e5" strokeWidth="1.5" />
                         <rect x="798" y="164" width="18" height="13" rx="2" fill="white" stroke="#374151" strokeWidth="1.5" />
