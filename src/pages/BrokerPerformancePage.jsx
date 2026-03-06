@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { usePropensity } from '../context/PropensityContext';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -121,14 +122,8 @@ const BrokerPerformancePage = () => {
     const [sortOrder, setSortOrder] = useState('Descending');
     const [viewOption, setViewOption] = useState('All Brokers');
 
-    // Read CSV rows stored by DataUploadPage
-    const csvData = useMemo(() => {
-        try {
-            return JSON.parse(localStorage.getItem('broker_csv_data') || '[]');
-        } catch {
-            return [];
-        }
-    }, []);
+    // Read CSV rows stored by PropensityContext
+    const { csvRows: csvData } = usePropensity();
 
     // Aggregate per broker
     const brokerData = useMemo(() => {

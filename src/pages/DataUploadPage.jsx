@@ -83,7 +83,8 @@ const DataUploadPage = () => {
     const {
         csvRows, setCsvRows,
         uploaded, setUploaded,
-        fileObj, setFileObj
+        fileObj, setFileObj,
+        fileName, setFileName
     } = usePropensity();
 
     const [inputType, setInputType] = useState('csv');
@@ -95,6 +96,7 @@ const DataUploadPage = () => {
         const file = e.target.files?.[0];
         if (file) {
             setFileObj(file);
+            setFileName(file.name);
             setUploaded(true);
             setShowDetails(false);
             setSelectedChannel('All');
@@ -115,7 +117,7 @@ const DataUploadPage = () => {
     };
 
     const handleRunPredictions = async () => {
-        if (!fileObj) return;
+        if (!csvRows.length) return;
         setIsRunning(true);
         try {
             navigate('/processing');
@@ -235,10 +237,10 @@ const DataUploadPage = () => {
                         <div className="text-left">
                             <h3 className="text-lg font-bold text-gray-800">Drag and drop file here</h3>
                             <p className="text-sm text-gray-500 mt-1">Limit: 200MB per file • CSV, Excel, PDF</p>
-                            {uploaded && fileObj && (
+                            {uploaded && fileName && (
                                 <div className="flex items-center gap-2 text-green-600 text-sm mt-4 font-medium">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                    Successfully uploaded '{fileObj.name}'
+                                    Successfully uploaded '{fileName}'
                                 </div>
                             )}
                         </div>
