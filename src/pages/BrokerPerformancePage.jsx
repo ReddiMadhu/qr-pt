@@ -104,10 +104,10 @@ const BrokerBubbleChart = ({ brokers }) => {
     return (
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col">
             <p className="text-sm font-semibold text-gray-700 mb-4">Approval Rate vs Loss Ratio</p>
-            <div className="flex-1 min-h-[300px] bg-slate-900 rounded-xl relative p-4 overflow-hidden shadow-inner group">
+            <div className="flex-1 min-h-[300px] bg-gray-50 rounded-xl relative p-4 overflow-hidden border border-gray-100 group">
 
                 {/* Y-axis Labels */}
-                <div className="absolute left-2 top-4 bottom-[2.5rem] w-8 flex flex-col justify-between text-[10px] text-slate-400 font-medium z-10">
+                <div className="absolute left-2 top-4 bottom-[2.5rem] w-8 flex flex-col justify-between text-[10px] text-gray-500 font-medium z-10">
                     <span>{maxY}</span>
                     <span>{(maxY * 0.75).toFixed(0)}</span>
                     <span>{(maxY * 0.5).toFixed(0)}</span>
@@ -116,15 +116,15 @@ const BrokerBubbleChart = ({ brokers }) => {
                 </div>
 
                 {/* Y-axis Title */}
-                <div className="absolute left-[-2rem] top-1/2 -rotate-90 text-[10px] text-slate-400 font-medium tracking-wider" style={{ transformOrigin: 'center' }}>
+                <div className="absolute left-[-2rem] top-1/2 -rotate-90 text-[10px] text-gray-500 font-medium tracking-wider" style={{ transformOrigin: 'center' }}>
                     Loss Ratio (%)
                 </div>
 
                 {/* Chart Area */}
-                <div className="absolute left-10 right-4 top-4 bottom-[2.5rem] border-l border-b border-slate-700">
+                <div className="absolute left-10 right-4 top-4 bottom-[2.5rem] border-l border-b border-gray-300">
                     {/* Horizontal Grid lines */}
                     {[0.25, 0.5, 0.75].map((pct, i) => (
-                        <div key={i} className="absolute left-0 right-0 border-t border-slate-800" style={{ bottom: `${pct * 100}%` }}></div>
+                        <div key={i} className="absolute left-0 right-0 border-t border-gray-200 border-dashed" style={{ bottom: `${pct * 100}%` }}></div>
                     ))}
 
                     {/* Bubbles */}
@@ -133,7 +133,7 @@ const BrokerBubbleChart = ({ brokers }) => {
                         return (
                             <div
                                 key={i}
-                                className="absolute rounded-full bg-teal-400/60 hover:bg-teal-300 hover:z-20 transition-all cursor-pointer shadow-lg shadow-teal-500/10 backdrop-blur-sm border border-teal-200/30"
+                                className="absolute rounded-full bg-blue-500/60 hover:bg-blue-600/80 hover:z-20 transition-all cursor-pointer shadow-sm border border-blue-400 backdrop-blur-sm"
                                 style={{
                                     left: getX(d.x),
                                     bottom: getY(d.y),
@@ -148,7 +148,7 @@ const BrokerBubbleChart = ({ brokers }) => {
                 </div>
 
                 {/* X-axis Labels */}
-                <div className="absolute left-10 right-4 bottom-4 flex justify-between text-[10px] text-slate-400 font-medium z-10 transition-opacity">
+                <div className="absolute left-10 right-4 bottom-4 flex justify-between text-[10px] text-gray-500 font-medium z-10 transition-opacity">
                     <span style={{ transform: 'translateX(-50%)' }}>{minX}</span>
                     <span style={{ transform: 'translateX(-50%)', position: 'absolute', left: '25%' }}>{minX + (maxX - minX) * 0.25}</span>
                     <span style={{ transform: 'translateX(-50%)', position: 'absolute', left: '50%' }}>{minX + (maxX - minX) * 0.5}</span>
@@ -157,13 +157,13 @@ const BrokerBubbleChart = ({ brokers }) => {
                 </div>
 
                 {/* X-axis Title */}
-                <div className="absolute bottom-[2px] right-4 text-[10px] text-slate-400 font-medium tracking-wider">
+                <div className="absolute bottom-[2px] right-4 text-[10px] text-gray-500 font-medium tracking-wider">
                     Approval Rate (%)
                 </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-gray-500">
-                <div className="w-3 h-3 rounded-full bg-teal-400/60 inline-block border border-teal-200/30"></div>
+            <div className="mt-4 flex items-center justify-center gap-2 text-[11px] text-gray-500">
+                <div className="w-3 h-3 rounded-full bg-blue-500/60 inline-block border border-blue-400"></div>
                 <span>Bubble size represents Total Premium</span>
             </div>
         </div>
