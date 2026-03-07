@@ -76,44 +76,99 @@ const HBarChart = ({ brokers, metric, metricLabel }) => {
     );
 };
 
-const RatioTable = ({ brokers }) => (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-        <p className="text-sm font-semibold text-gray-700 mb-4">Approval Rate vs Loss Ratio</p>
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                        <th className="px-4 py-2.5 font-semibold text-gray-600">Broker</th>
-                        <th className="px-4 py-2.5 font-semibold text-gray-600 text-center">Approval Rate (%)</th>
-                        <th className="px-4 py-2.5 font-semibold text-gray-600 text-center">Loss Ratio (%)</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {brokers.map((b, i) => {
-                        const id = b.broker_name || b.broker_id || b[Object.keys(b)[0]];
-                        const ar = b.broker_approval_rate || 0;
-                        const lr = b.broker_loss_ratio_percent || 0;
+const BrokerBubbleChart = ({ brokers }) => {
+    if (!brokers || brokers.length === 0) return null;
+
+    const data = brokers.map(b => ({
+        id: b.broker_name || b.broker_id || 'Unknown',
+        x: b.broker_approval_rate || 0,
+        y: b.broker_loss_ratio_percent || 0,
+        z: b.broker_total_premium || 0,
+    }));
+
+    const maxDataX = Math.max(...data.map(d => d.x));
+    const minDataX = Math.min(...data.map(d => d.x));
+    const maxX = Math.min(100, Math.ceil(maxDataX / 10) * 10 + 10);
+    const minX = Math.max(0, Math.floor(minDataX / 10) * 10 - 10);
+    const maxY = Math.max(100, Math.ceil(Math.max(...data.map(d => d.y)) / 20) * 20);
+    const maxZ = Math.max(...data.map(d => d.z)) || 1;
+
+    const getX = (val) => `${((val - minX) / (maxX - minX)) * 100}%`;
+    const getY = (val) => `${(val / maxY) * 100}%`;
+
+    // Bubble size bounds
+    const minSize = 12;
+    const maxSize = 48;
+    const getSize = (val) => minSize + (val / maxZ) * (maxSize - minSize);
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col">
+            <p className="text-sm font-semibold text-gray-700 mb-4">Approval Rate vs Loss Ratio</p>
+            <div className="flex-1 min-h-[300px] bg-slate-900 rounded-xl relative p-4 overflow-hidden shadow-inner group">
+
+                {/* Y-axis Labels */}
+                <div className="absolute left-2 top-4 bottom-[2.5rem] w-8 flex flex-col justify-between text-[10px] text-slate-400 font-medium z-10">
+                    <span>{maxY}</span>
+                    <span>{(maxY * 0.75).toFixed(0)}</span>
+                    <span>{(maxY * 0.5).toFixed(0)}</span>
+                    <span>{(maxY * 0.25).toFixed(0)}</span>
+                    <span>0</span>
+                </div>
+
+                {/* Y-axis Title */}
+                <div className="absolute left-[-2rem] top-1/2 -rotate-90 text-[10px] text-slate-400 font-medium tracking-wider" style={{ transformOrigin: 'center' }}>
+                    Loss Ratio (%)
+                </div>
+
+                {/* Chart Area */}
+                <div className="absolute left-10 right-4 top-4 bottom-[2.5rem] border-l border-b border-slate-700">
+                    {/* Horizontal Grid lines */}
+                    {[0.25, 0.5, 0.75].map((pct, i) => (
+                        <div key={i} className="absolute left-0 right-0 border-t border-slate-800" style={{ bottom: `${pct * 100}%` }}></div>
+                    ))}
+
+                    {/* Bubbles */}
+                    {data.map((d, i) => {
+                        const size = getSize(d.z);
                         return (
-                            <tr key={i} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-4 py-2.5 text-gray-700 font-medium">{id}</td>
-                                <td className="px-4 py-2.5 text-center">
-                                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${ar >= 70 ? 'bg-green-50 text-green-600' : ar >= 40 ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'}`}>
-                                        {ar.toFixed(1)}%
-                                    </span>
-                                </td>
-                                <td className="px-4 py-2.5 text-center">
-                                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${lossColor(lr)}`}>
-                                        {lr.toFixed(1)}%
-                                    </span>
-                                </td>
-                            </tr>
+                            <div
+                                key={i}
+                                className="absolute rounded-full bg-teal-400/60 hover:bg-teal-300 hover:z-20 transition-all cursor-pointer shadow-lg shadow-teal-500/10 backdrop-blur-sm border border-teal-200/30"
+                                style={{
+                                    left: getX(d.x),
+                                    bottom: getY(d.y),
+                                    width: size,
+                                    height: size,
+                                    transform: 'translate(-50%, 50%)'
+                                }}
+                                title={`${d.id}\nApproval Rate: ${d.x.toFixed(1)}%\nLoss Ratio: ${d.y.toFixed(1)}%\nPremium: $${d.z.toLocaleString()}`}
+                            ></div>
                         );
                     })}
-                </tbody>
-            </table>
+                </div>
+
+                {/* X-axis Labels */}
+                <div className="absolute left-10 right-4 bottom-4 flex justify-between text-[10px] text-slate-400 font-medium z-10 transition-opacity">
+                    <span style={{ transform: 'translateX(-50%)' }}>{minX}</span>
+                    <span style={{ transform: 'translateX(-50%)', position: 'absolute', left: '25%' }}>{minX + (maxX - minX) * 0.25}</span>
+                    <span style={{ transform: 'translateX(-50%)', position: 'absolute', left: '50%' }}>{minX + (maxX - minX) * 0.5}</span>
+                    <span style={{ transform: 'translateX(-50%)', position: 'absolute', left: '75%' }}>{minX + (maxX - minX) * 0.75}</span>
+                    <span style={{ transform: 'translateX(-50%)', position: 'absolute', left: '100%' }}>{maxX}</span>
+                </div>
+
+                {/* X-axis Title */}
+                <div className="absolute bottom-[2px] right-4 text-[10px] text-slate-400 font-medium tracking-wider">
+                    Approval Rate (%)
+                </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-center gap-2 text-[11px] text-gray-500">
+                <div className="w-3 h-3 rounded-full bg-teal-400/60 inline-block border border-teal-200/30"></div>
+                <span>Bubble size represents Total Premium</span>
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 // ─── main page ────────────────────────────────────────────────────────────────
 
@@ -273,7 +328,7 @@ const BrokerPerformancePage = () => {
             {/* Bar chart + ratio table side by side */}
             <section className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <HBarChart brokers={filteredBrokers} metric={sortMetric} metricLabel={metricLabel} />
-                <RatioTable brokers={filteredBrokers} />
+                <BrokerBubbleChart brokers={filteredBrokers} />
             </section>
 
             {/* Details table */}
