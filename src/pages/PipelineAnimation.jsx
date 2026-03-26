@@ -153,6 +153,8 @@ export default function PipelineAnimation() {
   const [activeWaitNodes, setActiveWaitNodes] = useState([]);
   const [completedNodes, setCompletedNodes] = useState([]);
   const [scale, setScale] = useState(1);
+  const [isFlowComplete, setIsFlowComplete] = useState(false);
+
 
   /* --- compute scale on mount and resize --- */
   useEffect(() => {
@@ -216,9 +218,9 @@ export default function PipelineAnimation() {
       if (step.show?.length > 0) setCompletedNodes(prev => [...prev, ...step.show]);
     }
     setActiveWaitNodes([]);
-    await new Promise(r => setTimeout(r, 2500));
-    navigate('/triage', { state: { submissionId } });
+    setIsFlowComplete(true);
   };
+
 
   // ✅ useEffect placed AFTER runFlow declaration to avoid ReferenceError
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -368,6 +370,26 @@ export default function PipelineAnimation() {
         </div>{/* end outer sized wrapper */}
 
       </div>{/* end flex centering container */}
+
+      {isFlowComplete && (
+        <div style={{
+          position: 'fixed',
+          bottom: '30px',
+          right: '30px',
+          zIndex: 1000,
+        }}>
+            <button
+                onClick={() => navigate('/triage', { state: { submissionId } })}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all transform hover:scale-105 active:scale-95"
+            >
+                <span>Continue to Triage</span>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+            </button>
+        </div>
+      )}
     </div>
   );
 }
+
