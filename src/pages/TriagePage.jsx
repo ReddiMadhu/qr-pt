@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fetchTriageProperties, sendLetterOfIntent, sendTriageEmails } from '../services/api';
+import { mockResultsNew } from '../data/mockData';
+import { fetchTriageProperties } from '../services/api';
 import { usePropensity } from '../context/PropensityContext';
 import ShapDrivers from '../components/ShapDrivers';
-import { mockResultsNew } from '../data/mockData';
 
 const TIER_BADGE = {
   High: 'bg-green-100 text-green-700 border-green-300',
@@ -30,10 +30,14 @@ const TriagePage = () => {
   const [searchParams] = useSearchParams();
   const {
     properties, setProperties,
+    run1Properties, run2Properties,
     smartAssignResults, setSmartAssignResults
   } = usePropensity();
 
-  const [loading, setLoading] = useState(properties.length === 0);
+  // Determine which list to show. Run 2 properties is standard, fallback to properties if empty.
+  const displayProperties = run2Properties && run2Properties.length > 0 ? run2Properties : properties;
+
+  const [loading, setLoading] = useState(displayProperties.length === 0);
   const [letterModal, setLetterModal] = useState(null);
   const [letterSending, setLetterSending] = useState(false);
   const [letterResult, setLetterResult] = useState(null);
@@ -50,24 +54,43 @@ const TriagePage = () => {
   const rawPropensity = searchParams.get('propensity');
   const hasValidPropensityParam = rawPropensity && ['high', 'mid', 'low', 'medium'].includes(rawPropensity.toLowerCase());
 
-  // Compute global SHAP for the right column
-  const globalShap = mockResultsNew?.global_shap
-    ? mockResultsNew.global_shap.map((s) => ({ feature: s.feature, contribution: s.mean_abs_shap, value: s.value }))
-    : [];
+  // Compute risk score breakdown for the right column (average across eligible properties for smooth display)
+  const computeRiskDrivers = () => {
+      if (!displayProperties.length) return [];
+      
+      const props = displayProperties;
+      const avg = (key) => props.reduce((sum, p) => sum + (p[key] || 0), 0) / props.length;
+      
+      return [
+          { feature: "total_risk_score", contribution: avg("total_risk_score") },
+          { feature: "property_vulnerability_risk", contribution: avg("property_vulnerability_risk") },
+          { feature: "construction_risk", contribution: avg("construction_risk") },
+          { feature: "locality_risk", contribution: avg("locality_risk") },
+          { feature: "coverage_risk", contribution: avg("coverage_risk") },
+          { feature: "claim_history_risk", contribution: avg("claim_history_risk") },
+          { feature: "property_condition_risk", contribution: avg("property_condition_risk") },
+          { feature: "broker_performance", contribution: avg("broker_performance") }
+      ].sort((a,b) => b.contribution - a.contribution);
+  };
+  const globalRiskDrivers = computeRiskDrivers();
 
   useEffect(() => {
     const load = async () => {
-      if (properties.length > 0) {
+      if (displayProperties.length > 0) {
         setLoading(false);
         return;
       }
       setLoading(true);
-      const data = await fetchTriageProperties();
-      setProperties(data);
+      try {
+          const data = await fetchTriageProperties();
+          setProperties(data);
+      } catch (err) {
+          console.error("Failed to load generic triage properties", err);
+      }
       setLoading(false);
     };
     load();
-  }, [properties.length, setProperties]);
+  }, [displayProperties.length, setProperties]);
 
   // Derive tier from quote_propensity_label (e.g. "High Propensity" → "High")
   const getTier = (label) => {
@@ -79,7 +102,7 @@ const TriagePage = () => {
   };
 
   // Filter out excluded properties, show all tiers
-  const filteredProperties = properties.filter((p) => !p.excluded);
+  const filteredProperties = displayProperties.filter((p) => !p.excluded);
 
   const handleSendLetter = async (letterType) => {
     if (!letterModal) return;
@@ -121,7 +144,9 @@ const TriagePage = () => {
     let lowCount = 0, highHighCount = 0, highLowCount = 0, midCount = 0;
 
     filteredProperties.forEach((p) => {
-      const tier = getTier(p.quote_propensity_label);
+      // Use score2 label if on dual run, else generic label
+      const label = p.quote_propensity_label_score2 || p.quote_propensity_label;
+      const tier = getTier(label);
       const coverage = (p.building_coverage_limit || 0) + (p.contents_coverage_limit || 0);
       if (tier === 'Low') lowCount++;
       else if (tier === 'Mid') midCount++;
@@ -130,7 +155,8 @@ const TriagePage = () => {
     });
 
     const counts = {
-      bpo: lowCount + highLowCount,
+      uw_review: lowCount,
+      bpo: highLowCount,
       assistable: highHighCount,
       complex: midCount,
       lowCount, highHighCount, highLowCount, midCount,
@@ -141,7 +167,7 @@ const TriagePage = () => {
     // Background API call + animation timer
     const process = async () => {
       try {
-        await sendTriageEmails('batch_all'); // Sending batch tracking ID if supported
+        // await sendTriageEmails('batch_all'); // optional actual sending if supported
       } catch (err) {
         console.warn('Silent fallback for batch UWT email dispatch:', err);
       }
@@ -211,7 +237,8 @@ const TriagePage = () => {
                   <thead className="bg-gray-200 border-b border-gray-300">
                     <tr>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Property</th>
-                      <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Propensity Score</th>
+                      <th className="px-3 pt-2 pb-2 text-center text-xs font-semibold text-gray-800">Score 1 (Initial)</th>
+                      <th className="px-3 pt-2 pb-2 text-center text-xs font-semibold text-gray-800">Score 2 (Final)</th>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Cover Type</th>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Building Coverage</th>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Contents Coverage</th>
@@ -220,10 +247,21 @@ const TriagePage = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {filteredProperties.map((property) => {
-                      const scorePct = property.quote_propensity != null
-                        ? Math.round(property.quote_propensity * 100)
-                        : '—';
-                      const tier = getTier(property.quote_propensity_label);
+                      // Attempt to fetch score 1 from run1Properties if it has it, else current prop
+                      const run1Prop = run1Properties && run1Properties.find(p => p.submission_id === property.submission_id);
+                      
+                      const score1Prob = property.quote_propensity_score1 ?? (run1Prop?.quote_propensity) ?? property.quote_propensity;
+                      const label1 = property.quote_propensity_label_score1 ?? (run1Prop?.quote_propensity_label) ?? property.quote_propensity_label;
+                      
+                      const score2Prob = property.quote_propensity_score2 ?? property.quote_propensity;
+                      const label2 = property.quote_propensity_label_score2 ?? property.quote_propensity_label;
+
+                      const score1Pct = score1Prob != null ? Math.round(score1Prob * 100) : '—';
+                      const score2Pct = score2Prob != null ? Math.round(score2Prob * 100) : '—';
+                      
+                      const tier1 = getTier(label1);
+                      const tier2 = getTier(label2);
+                      
                       return (
                         <tr key={property.submission_id || property.id} className="hover:bg-gray-50 transition-colors">
                           {/* Property Column */}
@@ -252,14 +290,26 @@ const TriagePage = () => {
                             </div>
                           </td>
 
-                          {/* Propensity Score */}
-                          <td className="px-3 py-2">
-                            <div className="flex flex-col gap-0.5">
-                              <span className={`text-base font-extrabold ${TIER_SCORE_COLOR[tier]}`}>
-                                {scorePct}%
+                          {/* Propensity Score 1 */}
+                          <td className="px-3 py-2 text-center border-l border-gray-100 bg-gray-50/50">
+                            <div className="flex flex-col items-center gap-0.5 opacity-60">
+                              <span className={`text-base font-extrabold ${TIER_SCORE_COLOR[tier1]}`}>
+                                {score1Pct}%
                               </span>
-                              <span className={`text-[10px] font-medium border rounded-full px-2 py-0.5 w-fit ${TIER_BADGE[tier]}`}>
-                                {property.quote_propensity_label ?? tier}
+                              <span className={`text-[10px] font-medium border rounded-full px-2 py-0.5 w-fit ${TIER_BADGE[tier1]}`}>
+                                {label1 ?? tier1}
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Propensity Score 2 */}
+                          <td className="px-3 py-2 text-center border-r border-gray-100 bg-indigo-50/30">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={`text-base font-extrabold ${TIER_SCORE_COLOR[tier2]}`}>
+                                {score2Pct}%
+                              </span>
+                              <span className={`text-[10px] font-medium border rounded-full px-2 py-0.5 w-fit ${TIER_BADGE[tier2]}`}>
+                                {label2 ?? tier2}
                               </span>
                             </div>
                           </td>
@@ -288,7 +338,7 @@ const TriagePage = () => {
                           </td>
 
                           {/* Action Buttons */}
-                          <td className="px-3 py-2">
+                          <td className="px-3 py-2 whitespace-nowrap">
                             <div className="flex flex-col gap-1.5">
                               <button
                                 onClick={() => {
@@ -299,7 +349,7 @@ const TriagePage = () => {
                                 }}
                                 className="px-3 py-1.5 rounded-md text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors inline-flex items-center gap-1.5"
                               >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                 </svg>
@@ -325,9 +375,9 @@ const TriagePage = () => {
                 </table>
               </div>
             </div>
-            {/* RIGHT SIDE - SHAP Drivers */}
+            {/* RIGHT SIDE - Risk Drivers */}
             <div className="lg:w-[25%] flex flex-col gap-3">
-              <ShapDrivers drivers={globalShap} />
+              <ShapDrivers drivers={globalRiskDrivers} mode="risk_score" />
             </div>
           </div>
         )}
@@ -581,35 +631,45 @@ const TriagePage = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 px-4">
-                    {/* BPO Team Queue */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm hover:shadow-lg transition-all duration-300 group hover:-translate-y-1">
-                      <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 px-4 overflow-x-auto pb-4">
+                    {/* UW Review Team Queue */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm hover:shadow-lg transition-all duration-300 group hover:-translate-y-1">
+                      <div className="w-10 h-10 bg-red-50 text-red-600 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                       </div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">BPO Team</p>
-                      <p className="text-4xl font-black text-slate-800 mb-2">{smartRoutingCounts.bpo}</p>
-                      <p className="text-xs text-slate-500 leading-relaxed font-medium">Low Propensity <br /> High Propensity + Low Cov</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">UW Review</p>
+                      <p className="text-3xl font-black text-slate-800 mb-1.5">{smartRoutingCounts.uw_review || 0}</p>
+                      <p className="text-[10px] text-slate-500 leading-relaxed font-medium">Low Propensity<br/>Manual Audit Required</p>
+                    </div>
+
+                    {/* BPO Team Queue */}
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm hover:shadow-lg transition-all duration-300 group hover:-translate-y-1">
+                      <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">BPO Team</p>
+                      <p className="text-3xl font-black text-slate-800 mb-1.5">{smartRoutingCounts.bpo}</p>
+                      <p className="text-[10px] text-slate-500 leading-relaxed font-medium">High Propensity + Low Cov</p>
                     </div>
 
                     {/* UWT Assistable Queue */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm hover:shadow-lg transition-all duration-300 group hover:-translate-y-1">
-                      <div className="w-12 h-12 bg-green-50 text-green-600 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm hover:shadow-lg transition-all duration-300 group hover:-translate-y-1">
+                      <div className="w-10 h-10 bg-green-50 text-green-600 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                       </div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">UWT Assistable</p>
-                      <p className="text-4xl font-black text-slate-800 mb-2">{smartRoutingCounts.assistable}</p>
-                      <p className="text-xs text-slate-500 leading-relaxed font-medium">High Propensity <br /> High Coverage ({'>'}$500k)</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">UWT Assistable</p>
+                      <p className="text-3xl font-black text-slate-800 mb-1.5">{smartRoutingCounts.assistable}</p>
+                      <p className="text-[10px] text-slate-500 leading-relaxed font-medium">High Propensity<br />High Cov ({'>'}$500k)</p>
                     </div>
 
                     {/* Complex UWT Queue */}
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm hover:shadow-lg transition-all duration-300 group hover:-translate-y-1">
-                      <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 text-center shadow-sm hover:shadow-lg transition-all duration-300 group hover:-translate-y-1">
+                      <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
                       </div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Complex UWT</p>
-                      <p className="text-4xl font-black text-slate-800 mb-2">{smartRoutingCounts.complex}</p>
-                      <p className="text-xs text-slate-500 leading-relaxed font-medium">Medium Propensity <br /> Edge Cases & Issues</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Complex UWT</p>
+                      <p className="text-3xl font-black text-slate-800 mb-1.5">{smartRoutingCounts.complex}</p>
+                      <p className="text-[10px] text-slate-500 leading-relaxed font-medium">Medium Propensity<br /> Edge Cases & Issues</p>
                     </div>
                   </div>
 

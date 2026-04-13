@@ -7,9 +7,13 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter()
+
+# ── Propensity threshold — properties below this are flagged for exclusion ─────
+LOW_PROPENSITY_THRESHOLD = float(os.getenv("LOW_PROPENSITY_THRESHOLD", "0.30"))
+
 
 # ── Property data (inlined from properties.py) ───────────────────────────────
 
@@ -615,6 +619,77 @@ def send_letter(request: LetterRequest):
         return {"status": "error", "reason": str(exc)}
 
     return {"status": "sent"}
+
+
+class RerunRequest(BaseModel):
+    excluded_ids: List[str]
+
+
+@router.get("/properties-run1")
+def get_properties_run1():
+    properties = _get_properties()
+    result = []
+    threshold = LOW_PROPENSITY_THRESHOLD
+
+    for i, prop in enumerate(properties[:6]):
+        if i >= len(MOCK_PREDICTIONS):
+            break
+        pred = MOCK_PREDICTIONS[i]
+        
+        # In run 1 we don't exclude anything, just return score 1
+        quote_propensity = pred["quote_propensity_probability"]
+        is_below = quote_propensity < threshold
+        
+        result.append({
+            **prop,
+            "quote_propensity": quote_propensity,
+            "quote_propensity_label": pred["quote_propensity"],
+            "is_below_threshold": is_below,
+            "threshold_used": threshold,
+            "total_risk_score": pred["total_risk_score"],
+            "property_vulnerability_risk": pred.get("property_vulnerability_risk", 0),
+            "construction_risk": pred.get("construction_risk", 0),
+            "locality_risk": pred.get("locality_risk", 0),
+            "coverage_risk": pred.get("coverage_risk", 0),
+            "claim_history_risk": pred.get("claim_history_risk", 0),
+            "property_condition_risk": pred.get("property_condition_risk", 0),
+            "broker_performance": pred.get("broker_performance", 0)
+        })
+    return result
+
+
+@router.post("/rerun-predictions")
+def rerun_predictions(request: RerunRequest):
+    properties = _get_properties()
+    result = []
+    
+    for i, prop in enumerate(properties[:6]):
+        if i >= len(MOCK_PREDICTIONS):
+            break
+        
+        sub_id = prop.get("submission_id")
+        if sub_id in request.excluded_ids:
+            continue
+            
+        pred = MOCK_PREDICTIONS[i]
+        
+        # Return eligible properties with score1 and score2
+        result.append({
+            **prop,
+            "quote_propensity_score1": pred["quote_propensity_probability"],
+            "quote_propensity_label_score1": pred["quote_propensity"],
+            "quote_propensity_score2": pred["quote_propensity_probability"], # mock uses same for now
+            "quote_propensity_label_score2": pred["quote_propensity"],
+            "total_risk_score": pred["total_risk_score"],
+            "property_vulnerability_risk": pred.get("property_vulnerability_risk", 0),
+            "construction_risk": pred.get("construction_risk", 0),
+            "locality_risk": pred.get("locality_risk", 0),
+            "coverage_risk": pred.get("coverage_risk", 0),
+            "claim_history_risk": pred.get("claim_history_risk", 0),
+            "property_condition_risk": pred.get("property_condition_risk", 0),
+            "broker_performance": pred.get("broker_performance", 0)
+        })
+    return result
 
 
 @router.get("/properties")

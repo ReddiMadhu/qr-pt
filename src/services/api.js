@@ -32,3 +32,13 @@ export const fetchTriageProperties = async () => {
   const response = await api.get('/api/triage/properties');
   return response.data;
 };
+
+export const fetchPropertiesRun1 = async () => {
+  const response = await api.get('/api/triage/properties-run1');
+  return response.data;
+};
+
+export const rerunPredictions = async (excludedIds) => {
+  const response = await api.post('/api/triage/rerun-predictions', { excluded_ids: excludedIds });
+  return response.data;
+};

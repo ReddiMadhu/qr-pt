@@ -16,9 +16,9 @@ const AdminLayout = ({ children }) => {
         <div className="min-h-screen flex bg-gray-50 text-gray-900 font-sans">
             {/* Sidebar */}
             {!hasPropensityParam && (
-                <div className="w-56 bg-white border-r border-gray-200 flex flex-col pt-8 pb-4 px-4 shadow-sm z-10 transition-all">
+                <div className="w-48 bg-white border-r border-gray-200 flex flex-col pt-8 pb-4 px-3 shadow-sm z-10 transition-all shrink-0">
                     <div className="mb-2">
-                        <h2 className="text-gray-400 font-semibold text-xs tracking-wider uppercase mb-4 pl-2">Menu</h2>
+                        <h2 className="text-gray-400 font-semibold text-[10px] tracking-wider uppercase mb-4 pl-2">Menu</h2>
                     </div>
                     <div>
                         <ul className="space-y-1">
@@ -34,7 +34,9 @@ const AdminLayout = ({ children }) => {
                                     isActive = pathname.startsWith('/upload') ||
                                         pathname.startsWith('/processing') ||
                                         pathname.startsWith('/triage') ||
-                                        pathname.startsWith('/property');
+                                        pathname.startsWith('/property') ||
+                                        pathname.startsWith('/prediction-loading') ||
+                                        pathname.startsWith('/prediction-results');
                                 } else if (link.path === '/broker-performance') {
                                     isActive = pathname.startsWith('/broker-performance');
                                 }

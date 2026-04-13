@@ -175,7 +175,7 @@ const DataUploadPage = () => {
         if (!csvRows.length) return;
         setIsRunning(true);
         try {
-            navigate('/processing');
+            navigate('/prediction-loading');
         } finally {
             setIsRunning(false);
         }

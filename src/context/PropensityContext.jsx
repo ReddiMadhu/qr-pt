@@ -10,6 +10,14 @@ export const PropensityProvider = ({ children }) => {
     const [fileObj, setFileObj] = useState(null);
     const [properties, setProperties] = useState([]);
     const [smartAssignResults, setSmartAssignResults] = useState(null);
+    
+    // Two-run threshold state
+    const [run1Properties, setRun1Properties] = useState([]);
+    const [run2Properties, setRun2Properties] = useState([]);
+    const [excludedIds, setExcludedIds] = useState([]);
+    const [lowThreshold, setLowThreshold] = useState(
+        parseFloat(import.meta.env.VITE_LOW_PROPENSITY_THRESHOLD || '0.30')
+    );
 
     const clearPropensityState = () => {
         setCsvRows([]);
@@ -18,6 +26,9 @@ export const PropensityProvider = ({ children }) => {
         setFileObj(null);
         setProperties([]);
         setSmartAssignResults(null);
+        setRun1Properties([]);
+        setRun2Properties([]);
+        setExcludedIds([]);
     };
 
     return (
@@ -28,6 +39,10 @@ export const PropensityProvider = ({ children }) => {
             fileName, setFileName,
             properties, setProperties,
             smartAssignResults, setSmartAssignResults,
+            run1Properties, setRun1Properties,
+            run2Properties, setRun2Properties,
+            excludedIds, setExcludedIds,
+            lowThreshold, setLowThreshold,
             clearPropensityState
         }}>
             {children}

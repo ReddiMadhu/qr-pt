@@ -6,6 +6,8 @@ import AdminConfigPage from './pages/AdminConfigPage';
 import DataUploadPage from './pages/DataUploadPage';
 
 import PipelineAnimation from './pages/PipelineAnimation';
+import PredictionLoadingPage from './pages/PredictionLoadingPage';
+import PredictionResultsPage from './pages/PredictionResultsPage';
 import PropertyDetail from './pages/PropertyDetail';
 import TriagePage from './pages/TriagePage';
 import BrokerPerformancePage from './pages/BrokerPerformancePage';
@@ -22,6 +24,8 @@ function App() {
           <Route path="/admin" element={<AdminLayout><AdminConfigPage /></AdminLayout>} />
           <Route path="/upload" element={<AdminLayout><DataUploadPage /></AdminLayout>} />
 
+          <Route path="/prediction-loading" element={<AdminLayout><PredictionLoadingPage /></AdminLayout>} />
+          <Route path="/prediction-results" element={<AdminLayout><PredictionResultsPage /></AdminLayout>} />
           <Route path="/processing" element={<AdminLayout><PipelineAnimation /></AdminLayout>} />
           <Route path="/property/:id" element={<AdminLayout><PropertyDetail /></AdminLayout>} />
           <Route path="/triage" element={<AdminLayout><TriagePage /></AdminLayout>} />
