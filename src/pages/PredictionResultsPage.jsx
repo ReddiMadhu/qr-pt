@@ -76,7 +76,7 @@ const PredictionResultsPage = () => {
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full min-h-screen bg-gray-50 flex flex-col">
             <div className="flex items-center gap-3 mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">Prediction Results</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Preliminary Propensity</h1>
                 <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-0.5 rounded border border-indigo-200 shadow-sm">
                     Run 1
                 </span>
@@ -114,7 +114,7 @@ const PredictionResultsPage = () => {
                             <thead className="bg-gray-100 border-b border-gray-300">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Property</th>
-                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Propensity Score 1</th>
+                                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Preliminary Score</th>
                                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Cover Type</th>
                                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Building Cov</th>
                                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
@@ -153,11 +153,11 @@ const PredictionResultsPage = () => {
                                             <td className="px-4 py-3 text-center">
                                                 {isExcluded ? (
                                                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                                                        Will Exclude
+                                                        To be Triage
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                        Eligible
+                                                        To be Eligible
                                                     </span>
                                                 )}
                                             </td>
@@ -183,7 +183,7 @@ const PredictionResultsPage = () => {
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    Exclude Low Scores & Re-Run Predictions
+                    Run Property Insights & Final Triage
                 </button>
             </div>
             

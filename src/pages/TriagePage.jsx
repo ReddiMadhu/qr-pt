@@ -196,7 +196,7 @@ const TriagePage = () => {
           <div className="h-4 w-px bg-gray-300"></div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-gray-900">AI Predictions Results</h1>
+              <h1 className="text-xl font-bold text-gray-900">Preliminary Propensity</h1>
               <span className={`text-xs font-semibold border rounded-full px-2.5 py-0.5 bg-blue-100 text-blue-700 border-blue-300`}>
                 All Submissions
               </span>
@@ -237,8 +237,8 @@ const TriagePage = () => {
                   <thead className="bg-gray-200 border-b border-gray-300">
                     <tr>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Property</th>
-                      <th className="px-3 pt-2 pb-2 text-center text-xs font-semibold text-gray-800">Score 1 (Initial)</th>
-                      <th className="px-3 pt-2 pb-2 text-center text-xs font-semibold text-gray-800">Score 2 (Final)</th>
+                      <th className="px-3 pt-2 pb-2 text-center text-xs font-semibold text-gray-800">Preliminary Propensity</th>
+                      <th className="px-3 pt-2 pb-2 text-center text-xs font-semibold text-gray-800">Final Propensity</th>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Cover Type</th>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Building Coverage</th>
                       <th className="px-3 pt-2 pb-2 text-left text-xs font-semibold text-gray-800">Contents Coverage</th>

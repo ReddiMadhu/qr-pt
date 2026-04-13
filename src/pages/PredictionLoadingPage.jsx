@@ -20,18 +20,18 @@ const CANVAS_H = 780;
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const R1_DIVISIONS = [
-  { id: "div2", label: "Submission Details", nodes: ["submission","exclusion"],                      x: 420, y: 70,  w: 310, h: 250 },
-  { id: "div3", label: "Quote Propensity",   nodes: ["riskScore","propensityScore","propensityLevel"],x: 420, y: 370, w: 310, h: 330 },
-  { id: "div4", label: "Broker Profiles",    nodes: ["broker"],                                      x: 820, y: 370, w: 310, h: 100 },
+  { id: "div2", label: "Submission Details", nodes: ["submission","exclusion"],                      x: 825, y: 70,  w: 310, h: 250 },
+  { id: "div3", label: "Quote Propensity",   nodes: ["riskScore","propensityScore","propensityLevel"],x: 825, y: 370, w: 310, h: 330 },
+  { id: "div4", label: "Broker Profiles",    nodes: ["broker"],                                      x: 415, y: 370, w: 310, h: 100 },
 ];
 
 const R1_NODES = [
-  { id: "broker",          label: "Broker Data",                                  icon: Database,    x: 850, y: 410, div: "div4" },
-  { id: "submission",      label: "Submission Details",                           icon: Database,    x: 450, y: 110, div: "div2" },
-  { id: "exclusion",       label: "Excluding Properties based on configured rules",icon: ShieldAlert, x: 450, y: 210, div: "div2" },
-  { id: "riskScore",       label: "Property Risk Score",                          icon: Target,      x: 450, y: 410, div: "div3" },
-  { id: "propensityScore", label: "Underwriting Propensity Score",                icon: Target,      x: 450, y: 520, div: "div3" },
-  { id: "propensityLevel", label: "Propensity Level (High/Medium/Low)",           icon: Target,      x: 450, y: 610, div: "div3" },
+  { id: "broker",          label: "Broker Data",                                  icon: Database,    x: 445, y: 410, div: "div4" },
+  { id: "submission",      label: "Submission Details",                           icon: Database,    x: 855, y: 110, div: "div2" },
+  { id: "exclusion",       label: "Excluding Properties based on configured rules",icon: ShieldAlert, x: 855, y: 210, div: "div2" },
+  { id: "riskScore",       label: "Running ML modeling with submission data",     icon: Target,      x: 855, y: 410, div: "div3" },
+  { id: "propensityScore", label: "Underwriting Propensity Score",                icon: Target,      x: 855, y: 520, div: "div3" },
+  { id: "propensityLevel", label: "Propensity Level (High/Medium/Low)",           icon: Target,      x: 855, y: 610, div: "div3" },
 ];
 
 const R1_EDGES = [
@@ -46,7 +46,7 @@ const R1_STEPS = [
   { text: "Loading broker data (past performance)...",        show: ["broker"],           waitTime: 700  },
   { text: "Processing submission details...",                  show: ["submission"],        waitTime: 700  },
   { text: "Evaluating property exclusions...",                 show: ["exclusion"],         edges: ["su-ex"],                 waitTime: 1000 },
-  { text: "Computing property risk score...",                  show: ["riskScore"],         edges: ["div2-div3","div4-div3"], waitTime: 2000 },
+  { text: "Running ML modeling with submission data...",       show: ["riskScore"],         edges: ["div2-div3","div4-div3"], waitTime: 2000 },
   { text: "Evaluating underwriting propensity score...",       show: ["propensityScore"],   edges: ["rs-ps"],                 waitTime: 1800 },
   { text: "Determining propensity level...",                   show: ["propensityLevel"],   edges: ["ps-pl"],                 waitTime: 2500 },
 ];
@@ -192,7 +192,7 @@ const R2_ANIM = [
   { wait: 3200, status: "Acquiring front/roof images & analysing threat proximity…" },          // 6 — frontRoof + threat
   { wait: 2800, status: "Detecting structural features & running proximity analysis…" },        // 7 — objectDetect + proximity
   { wait: 1800, status: "Calculating combined property vulnerability score…" },                 // 8 — vulnerability
-  { wait: 2200, status: "Computing property risk score (merging vulnerability data)…" },        // 9 — QP div + riskScore + edges③④
+  { wait: 2200, status: "Computing property risk score…" },                                     // 9 — QP div + riskScore + edges③④
   { wait: 2000, status: "Evaluating underwriting propensity score…" },                         // 10 — propensityScore
   { wait: 2800, status: "Determining final propensity level…" },                               // 11 — propensityLevel
   { wait: 700,  status: "Classification complete — High / Medium / Low" },                     // 12 → navigate
@@ -285,7 +285,7 @@ function Run2Canvas({ animStep }) {
         {/* ③ Medium/High → Quote Propensity  (Propensity scores) */}
         {s>=10 && <>
           <path d="M 550 100 L 550 370" className={eC(s>=12)} markerEnd={eM(s>=12)} />
-          <text x="560" y="235" fill="#9ca3af" fontSize="12">Propensity scores</text>
+          <text x="560" y="235" fill="#9ca3af" fontSize="12">Preliminary propensity scores</text>
         </>}
 
         {/* ④ Property Insights (vulnerability) → Quote Propensity  (Property vulnerability scores) */}
@@ -340,7 +340,7 @@ function Run2Canvas({ animStep }) {
       {s>=9 && (
         <div
           className={`division-box fade-in ${s>=12?"completed":"processing"}`}
-          style={{ position:"absolute", left:415, top:370, width:270, height:320 }}
+          style={{ position:"absolute", left:415, top:400, width:270, height:320 }}
         >
           <div className="division-label">Quote Propensity</div>
         </div>
@@ -372,6 +372,7 @@ export default function PredictionLoadingPage() {
   /* Run 2 state */
   const [animStep, setAnimStep] = useState(0);
   const [r2Status, setR2Status] = useState(R2_ANIM[0].status);
+  const [r2Finished, setR2Finished] = useState(false);
 
   const [scale, setScale] = useState(1);
   const canvasWrapRef = useRef(null);
@@ -462,7 +463,7 @@ export default function PredictionLoadingPage() {
       if (alive) {
         const results = await apiPromise;
         setRun2Properties(results);
-        navigate("/triage");
+        setR2Finished(true);
       }
     };
     run();
@@ -495,7 +496,21 @@ export default function PredictionLoadingPage() {
       </div>
 
       {/* Scaled canvas */}
-      <div ref={canvasWrapRef} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", padding:12 }}>
+      <div ref={canvasWrapRef} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", padding:12, position:"relative" }}>
+        
+        {r2Finished && (
+          <div style={{ position:"absolute", bottom:24, right:24, zIndex:50 }} className="fade-in">
+            <button
+              onClick={() => navigate("/triage")}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg hover:-translate-y-0.5 transition-all focus:ring-4 focus:ring-indigo-100"
+            >
+              View Results
+              <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+              </svg>
+            </button>
+          </div>
+        )}
         <div style={{ width:CANVAS_W*scale, height:CANVAS_H*scale, position:"relative", flexShrink:0 }}>
           <div style={{ position:"absolute", top:0, left:0, width:CANVAS_W, height:CANVAS_H, transform:`scale(${scale})`, transformOrigin:"top left" }}>
 
