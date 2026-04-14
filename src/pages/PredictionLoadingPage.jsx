@@ -274,7 +274,7 @@ function Run2Canvas({ animStep }) {
         {/* ① Low Propensity → BPO */}
         {s>=2 && <>
           <path d="M 110 100 L 110 430" className={eC(s>=3)} markerEnd={eM(s>=3)} />
-          <text x="125" y="265" fill="#9ca3af" fontSize="12">Intelligent Triage</text>
+          <text x="125" y="265" fill="black" fontSize="14" fontWeight="500">Intelligent Triage</text>
         </>}
 
         {/* ② Medium/High → Property Insights */}
@@ -285,13 +285,13 @@ function Run2Canvas({ animStep }) {
         {/* ③ Medium/High → Quote Propensity  (Propensity scores) */}
         {s>=10 && <>
           <path d="M 550 100 L 550 370" className={eC(s>=12)} markerEnd={eM(s>=12)} />
-          <text x="560" y="235" fill="#9ca3af" fontSize="12">Preliminary propensity scores</text>
+          <text x="560" y="235" fill="black" fontSize="14" fontWeight="500">Preliminary propensity scores</text>
         </>}
 
         {/* ④ Property Insights (vulnerability) → Quote Propensity  (Property vulnerability scores) */}
         {s>=10 && <>
-          <path d="M 1205 576 L 1205 640 L 685 640" className={eC(s>=12)} markerEnd={eM(s>=12)} />
-          <text x="945" y="660" fill="#9ca3af" fontSize="12" textAnchor="middle">Property vulnerability scores</text>
+          <path d="M 1205 576 L 1205 663 L 685 663" className={eC(s>=12)} markerEnd={eM(s>=12)} />
+          <text x="945" y="655" fill="black" fontSize="14" fontWeight="500" textAnchor="middle">Property vulnerability scores</text>
         </>}
 
         {/* PI internal edges */}
@@ -327,7 +327,7 @@ function Run2Canvas({ animStep }) {
       {s>=3 && (
         <div
           className={`division-box fade-in ${s>=9?"completed":"processing"}`}
-          style={{ position:"absolute", left:900, top:30, width:620, height:630 }}
+          style={{ position:"absolute", left:900, top:30, width:620, height:600 }}
         >
           <div className="division-label">Property Insights</div>
         </div>
@@ -368,6 +368,7 @@ export default function PredictionLoadingPage() {
   const [activeWaitNodes, setActiveWaitNodes] = useState([]);
   const [completedNodes,  setCompletedNodes]  = useState([]);
   const [statusText,      setStatusText]      = useState("Initializing pipeline…");
+  const [r1Finished,      setR1Finished]      = useState(false);
 
   /* Run 2 state */
   const [animStep, setAnimStep] = useState(0);
@@ -442,7 +443,7 @@ export default function PredictionLoadingPage() {
           setActiveWaitNodes([]);
         }
       }
-      if (alive) navigate("/prediction-results");
+      if (alive) setR1Finished(true);
     };
     run();
     return () => { alive=false; };
@@ -505,6 +506,19 @@ export default function PredictionLoadingPage() {
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg hover:-translate-y-0.5 transition-all focus:ring-4 focus:ring-indigo-100"
             >
               View Results
+              <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+              </svg>
+            </button>
+          </div>
+        )}
+        {r1Finished && !isRerun && (
+          <div style={{ position:"absolute", bottom:24, right:24, zIndex:50 }} className="fade-in">
+            <button
+              onClick={() => navigate("/prediction-results")}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold shadow-lg hover:-translate-y-0.5 transition-all focus:ring-4 focus:ring-indigo-100"
+            >
+              Next
               <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"/>
               </svg>
