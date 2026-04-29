@@ -34,6 +34,7 @@ export default function PredictionResultsPage() {
     run1Properties, run1ShapGlobal,
     submission, properties,
     excludedIds, setExcludedIds, lowThreshold,
+    excludedRows,
   } = usePropensity();
 
   useEffect(() => {
@@ -48,8 +49,9 @@ export default function PredictionResultsPage() {
 
   const mergedProperties = properties.map(base => {
     const pred = run1Properties.find(p => p.submission_id === base.submission_id);
-    const isMlExcluded = !pred; // Backend model completely excluded this row
-    return { ...base, ...(pred || {}), isMlExcluded };
+    const excl = excludedRows.find(e => e.submission_id === base.submission_id);
+    const isMlExcluded = !pred;
+    return { ...base, ...(excl || {}), ...(pred || {}), isMlExcluded };
   });
 
   const bpoCount     = excludedIds.length;
@@ -195,8 +197,8 @@ export default function PredictionResultsPage() {
                                 <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-300">
                                   ML Excluded
                                 </span>
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-800 text-white text-xs rounded shadow-lg z-10 whitespace-normal text-center">
-                                  Excluded by underwriting rules (e.g., coverage or income below minimum thresholds).
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-56 p-2.5 bg-gray-800 text-white text-xs rounded-lg shadow-lg z-10 whitespace-normal text-center">
+                                  {prop.Reasons || 'Excluded by underwriting rules'}
                                   <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                                 </div>
                               </div>

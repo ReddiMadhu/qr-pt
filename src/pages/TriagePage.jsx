@@ -43,6 +43,7 @@ const TriagePage = () => {
     excludedIds, properties: ctxProperties,
     submission, run1ShapGlobal,
     smartAssignResults, setSmartAssignResults,
+    excludedRows,
   } = usePropensity();
 
   const [fallbackProperties, setFallbackProperties] = useState([]);
@@ -75,6 +76,7 @@ const TriagePage = () => {
 
     return ctxProperties.map(base => {
       const pred = run1Properties.find(p => p.submission_id === base.submission_id);
+      const excl = excludedRows.find(e => e.submission_id === base.submission_id);
       const isMlExcluded = !pred;
       const isBPO = excludedIds.includes(base.submission_id);
 
@@ -89,7 +91,7 @@ const TriagePage = () => {
         // Merge Run 2 fields (property_id, property_vulnerability_risk, etc.)
         if (r2) Object.assign(base, r2);
       }
-      return { ...base, ...(pred || {}), prelimScore, prelimLabel, finalScore, finalLabel, isBPO, isMlExcluded };
+      return { ...base, ...(excl || {}), ...(pred || {}), prelimScore, prelimLabel, finalScore, finalLabel, isBPO, isMlExcluded };
     });
   };
 
@@ -266,9 +268,15 @@ const TriagePage = () => {
                           {/* Final Propensity — vivid, no bar */}
                           <td className="px-3 py-2 text-center border-r border-gray-100 bg-indigo-50/20">
                             {row.isMlExcluded ? (
-                              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-300">
-                                ML Excluded
-                              </span>
+                              <div className="group relative inline-block">
+                                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 border border-gray-300">
+                                  ML Excluded
+                                </span>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-56 p-2.5 bg-gray-800 text-white text-xs rounded-lg shadow-lg z-10 whitespace-normal text-center">
+                                  {row.Reasons || 'Excluded by underwriting rules'}
+                                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+                                </div>
+                              </div>
                             ) : row.isBPO ? (
                               <div className="flex flex-col items-center gap-0.5">
                                 <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-300">

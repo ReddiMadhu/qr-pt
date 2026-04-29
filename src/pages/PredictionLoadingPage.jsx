@@ -309,6 +309,7 @@ export default function PredictionLoadingPage() {
     run1Properties,
     setRun1Properties, setRun1ShapGlobal,
     setRun2Properties,
+    setExcludedRows,
     lowThreshold,
     csvRows,
   } = usePropensity();
@@ -408,7 +409,9 @@ export default function PredictionLoadingPage() {
         const result = await apiPromise;
         if (result && alive) {
           const preds = result.predictions ?? [];
+          const excluded = result.excluded ?? [];
           const locals = result.shap_local ?? [];
+          setExcludedRows(excluded);
           setRun1Properties(preds.map((p, i) => {
             const sl = locals[i] ?? {};
             const shap_values = Object.entries(sl).map(([feature, val]) => ({

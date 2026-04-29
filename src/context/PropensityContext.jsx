@@ -30,6 +30,10 @@ export const PropensityProvider = ({ children }) => {
     // These are excluded from Run 2 and shown as "BPO Triage" in the final TriagePage
     const [excludedIds, setExcludedIds] = useState([]);
 
+    // Rows excluded by evaluation rules (from /api/ml/submissions response)
+    // Each object has submission_id, imageUrl, Reasons, Decision, and original fields
+    const [excludedRows, setExcludedRows] = useState([]);
+
     // SmartAssign routing results — persisted so modal can be reopened
     const [smartAssignResults, setSmartAssignResults] = useState(null);
 
@@ -46,6 +50,7 @@ export const PropensityProvider = ({ children }) => {
         setRun2Properties([]);
         setExcludedIds([]);
         setSmartAssignResults(null);
+        setExcludedRows([]);
         setCsvRows([]);
         setUploaded(false);
         setFileObj(null);
@@ -61,6 +66,7 @@ export const PropensityProvider = ({ children }) => {
             run2Properties, setRun2Properties,
             excludedIds, setExcludedIds,
             smartAssignResults, setSmartAssignResults,
+            excludedRows, setExcludedRows,
             csvRows, setCsvRows,
             uploaded, setUploaded,
             fileObj, setFileObj,
