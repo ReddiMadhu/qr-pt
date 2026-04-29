@@ -310,6 +310,7 @@ export default function PredictionLoadingPage() {
     setRun1Properties, setRun1ShapGlobal,
     setRun2Properties,
     lowThreshold,
+    csvRows,
   } = usePropensity();
 
   /* Run 1 state */
@@ -378,7 +379,7 @@ export default function PredictionLoadingPage() {
     let alive = true;
 
     // Fire the ML API call concurrently with the animation
-    const apiPromise = fetchProperties()
+    const apiPromise = (csvRows && csvRows.length > 0 ? Promise.resolve(csvRows) : fetchProperties())
       .then(props => {
         if (alive) setProperties(props);
         return runPreliminaryPredictions(props, {}, {});
