@@ -78,6 +78,53 @@ const MOCK_DATA = [
     { sub: 'SUB00244', ch: 'Broker', date: '1/5/2025', app: 'APP00244', prop: 'PR00244', pol: 'PO00244', bro: 'BR03044', desc: 'Final nati...' },
 ];
 
+const parseCSV = (text) => {
+    const rows = [];
+    let curVal = '';
+    let inQuotes = false;
+    let row = [];
+    
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        
+        if (inQuotes) {
+            if (char === '"') {
+                if (i + 1 < text.length && text[i + 1] === '"') {
+                    curVal += '"';
+                    i++;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                curVal += char;
+            }
+        } else {
+            if (char === '"') {
+                inQuotes = true;
+            } else if (char === ',') {
+                row.push(curVal.trim());
+                curVal = '';
+            } else if (char === '\r') {
+                // Ignore carriage return
+            } else if (char === '\n') {
+                row.push(curVal.trim());
+                if (row.length > 0 && !(row.length === 1 && row[0] === '')) {
+                    rows.push(row);
+                }
+                row = [];
+                curVal = '';
+            } else {
+                curVal += char;
+            }
+        }
+    }
+    row.push(curVal.trim());
+    if (row.length > 0 && !(row.length === 1 && row[0] === '')) {
+        rows.push(row);
+    }
+    return rows;
+};
+
 const DataUploadPage = () => {
     const navigate = useNavigate();
     const {
@@ -158,12 +205,12 @@ const DataUploadPage = () => {
             const reader = new FileReader();
             reader.onload = (evt) => {
                 const text = evt.target.result;
-                const lines = text.split('\n').filter(Boolean);
-                if (lines.length < 2) return;
-                const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-                const rows = lines.slice(1).map(line => {
-                    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-                    return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? '']));
+                const parsedData = parseCSV(text);
+                if (parsedData.length < 2) return;
+                
+                const headers = parsedData[0];
+                const rows = parsedData.slice(1).map(rowVals => {
+                    return Object.fromEntries(headers.map((h, i) => [h, rowVals[i] ?? '']));
                 });
                 setCsvRows(rows);
             };
