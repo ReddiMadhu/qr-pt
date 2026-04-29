@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { mockProperties, mockResultsNew } from '../data/mockData';
 import { fetchPropertyResult, sendLetterOfIntent } from '../services/api';
 
@@ -60,10 +60,6 @@ const PropertyDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
-  const rawPropensity = searchParams.get('propensity');
-  const hasValidPropensityParam = rawPropensity && ['high', 'mid', 'low', 'medium'].includes(rawPropensity.toLowerCase());
-
   const [showVulnerabilityPopup, setShowVulnerabilityPopup] = useState(false);
   const [triageResult, setTriageResult] = useState(null);
   const [letterModal, setLetterModal] = useState(false);
@@ -71,26 +67,20 @@ const PropertyDetail = () => {
   const [letterResult, setLetterResult] = useState(null);
   const [justification, setJustification] = useState('');
 
-  // Data passed from DecisionComparison via router state
+  // Data passed from DecisionComparison / PredictionResultsPage via router state
   const passedProperty = location.state?.property;
   const passedPropertyResult = location.state?.propertyResult;
   const passedResults = location.state?.results;
   const fromTriage = location.state?.fromTriage ?? false;
+  // When navigated from PredictionResultsPage, hide roof image + risk breakdown
+  const fromPreliminary = location.state?.fromPreliminary ?? false;
 
-  // When navigated from triage, fetch result data via submission_id
-  useEffect(() => {
-    if (!fromTriage || !passedProperty?.submission_id) return;
-    fetchPropertyResult(passedProperty.submission_id)
-      .then(setTriageResult)
-      .catch(() => setTriageResult(null));
-  }, [fromTriage, passedProperty?.submission_id]);
-
-  // Use passed data, fall back to scanning mockResultsNew by id
+  // When navigated from triage, passedProperty contains the full context including SHAP and Run 1 scores
   const results = passedResults || mockResultsNew;
   const propertiesList = mockProperties;
 
   const propertyResult = fromTriage
-    ? (triageResult || null)
+    ? passedProperty
     : (passedPropertyResult
       || results?.results?.find((r) => r.submission_id === id)
       || results?.results?.[0]);
@@ -99,14 +89,6 @@ const PropertyDetail = () => {
   const property = passedProperty || propertiesList[propIndex] || propertiesList[0];
 
   if (!property || !propertyResult) {
-    // While waiting for triage API fetch, show a loading state
-    if (fromTriage && !triageResult) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
-        </div>
-      );
-    }
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -119,12 +101,17 @@ const PropertyDetail = () => {
 
   const {
     quote_propensity, quote_propensity_label,
-    total_risk_score,
+    total_risk_score, property_insight_id,
     property_vulnerability_risk, construction_risk_score,
     locality_risk, coverage_risk, claim_history_risk, property_condition_risk,
     shap_values = [], vulnerability_data = {}, user_selection,
     property_state, submission_channel: res_channel, occupancy_type: res_occupancy, cover_type: res_cover,
   } = propertyResult;
+
+  // Build PropertyInsights link from property_id (opens external Property API portal)
+  const propertyInsightsLink = property_insight_id
+    ? `${import.meta.env.VITE_PROPERTY_API_BASE || 'http://localhost:8000'}/get_address?property_id=${property_insight_id}`
+    : null;
 
   // Color based purely on quote_propensity_label — no ai_risk
   const propensityColorMap = {
@@ -132,24 +119,26 @@ const PropertyDetail = () => {
     'Mid Propensity': { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
     'Low Propensity': { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-300' },
   };
-  const propColor = propensityColorMap[quote_propensity_label] || propensityColorMap['Mid Propensity'];
+  const propColor = propensityColorMap[fromTriage ? (propertyResult.finalLabel ?? quote_propensity_label) : quote_propensity_label] || propensityColorMap['Mid Propensity'];
 
   // Real risk breakdown from prediction data (scores out of 100)
   const riskBreakdown = propertyResult.risk_breakdown || [
-    { label: 'Property Vulnerability Risk', score: property_vulnerability_risk, hasView: true, tooltipText: "Roof Condition: 75\nWildfire Proximity: High\nFlood Zone: Minimal" },
-    { label: 'Property Condition Risk', score: property_condition_risk, tooltipText: "Wood score: 80\nAge score: 20\nMaintenance: 15" },
-    { label: 'Locality Risk', score: locality_risk, tooltipText: "Crime Rate: 45\nFire Incident: 60\nProximity to Services: 30" },
-    { label: 'Claim History Risk', score: claim_history_risk, tooltipText: "Past Claims: 3\nSeverity: Low\nFrequency Score: 15" },
-    { label: 'Coverage Risk', score: coverage_risk, tooltipText: "Underinsurance Risk: 40\nLiability Exposure: 25" },
-    { label: 'Construction Risk', score: construction_risk_score, tooltipText: "Material Quality: 60\nCode Compliance: 40" },
+    { label: 'Construction Risk', score: construction_risk_score, tooltipText: "Building Material (40%), Code compliance (25%), Construction permit (10%), Foundation (25%)" },
+    { label: 'Locality Risk', score: locality_risk, tooltipText: "Fire Rate (30%), Crime Rate (40%), Industrial Distance (15%), Fire Station Distance (15%)" },
+    { label: 'Coverage Risk', score: coverage_risk, tooltipText: "Coverage Type (30%), Property Category (40%), Policy Type (30%)" },
+    { label: 'Claim History Risk', score: claim_history_risk, tooltipText: "Property past loss frequency (40%), Claim Amount (40%), Declined Insurance (20%)" },
+    { label: 'Property Condition Risk', score: property_condition_risk, tooltipText: "Occupancy (45%), Age Penalty (35%), Safety Deduction (20%)" },
   ];
 
-  // Separate top 5 positive and top 5 negative SHAP drivers
-  const shapList = shap_values.map(s => ({
-    feature: s.feature,
-    val: s.mean_abs_shap ?? s.contribution ?? 0,
-    value: s.value
-  }));
+  // Separate top 6 positive and top 6 negative SHAP drivers, rounded to 3 decimals
+  const shapList = shap_values.map(s => {
+    const rawVal = s.val ?? s.mean_abs_shap ?? s.contribution ?? 0;
+    return {
+      feature: (s.feature || '').replace(/_/g, ' '),
+      val: parseFloat(rawVal.toFixed(3)),
+      value: s.value
+    };
+  });
 
   const posDrivers = shapList.filter(s => s.val > 0)
     .sort((a, b) => b.val - a.val)
@@ -222,37 +211,44 @@ const PropertyDetail = () => {
           data={vulnerability_data}
           onClose={() => setShowVulnerabilityPopup(false)}
           insightImage={vulnerability_data?.insight_image || property.roofImageUrl}
-          link={vulnerability_data?.link}
+          link={propertyInsightsLink || vulnerability_data?.link}
         />
       )}
 
-      {/* Cleaned up Inner Header to avoid double bounding boxes with Layout */}
-      <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      {/* Page Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => navigate('/')}
+            title="Home"
+            className="text-gray-400 hover:text-blue-600 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </button>
           <button
             onClick={() => navigate(-1)}
-            className="text-gray-500 hover:text-blue-600 flex items-center gap-1.5 text-sm font-medium transition-colors"
+            className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm font-medium"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
           </button>
-          <div className="h-4 w-px bg-gray-300"></div>
-          <h1 className="text-lg font-bold text-gray-900">Property Risk Evaluation</h1>
+          <h1 className="text-lg font-bold text-gray-900">Property Risk Evaluation Page</h1>
+          {fromTriage && (
+            <button
+              onClick={() => { setLetterModal(true); setLetterResult(null); setJustification(''); }}
+              className="ml-auto flex items-center gap-1.5 text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-md transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              Send Letter
+            </button>
+          )}
         </div>
-
-        {fromTriage && hasValidPropensityParam && (
-          <button
-            onClick={() => { setLetterModal(true); setLetterResult(null); setJustification(''); }}
-            className="flex items-center gap-1.5 text-sm font-medium border border-blue-300 text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-md transition-colors shadow-sm"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-            Send Letter
-          </button>
-        )}
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-4 space-y-3">
@@ -265,14 +261,31 @@ const PropertyDetail = () => {
               Submission ID: <span className="font-semibold text-gray-900">{propertyResult.submission_id}</span>
             </span>
             <span className="text-gray-300">|</span>
-            <span className="text-gray-600">
-              Risk Score: <span className={`font-semibold ${propColor.text}`}>{total_risk_score}</span>
-              <span className="text-gray-400 text-xs ml-1">/ 100</span>
+            <span className="text-gray-600 flex items-center gap-1.5">
+              Property Vulnerability Risk: 
+              <span className={`font-semibold ${property_vulnerability_risk >= 70 ? 'text-red-600' : property_vulnerability_risk >= 40 ? 'text-amber-600' : 'text-green-600'}`}>
+                {property_vulnerability_risk}
+              </span>
+              <span className="text-gray-400 text-xs">/ 100</span>
+              {(!fromPreliminary && propertyInsightsLink) && (
+                <button
+                  onClick={() => window.open(propertyInsightsLink, '_blank', 'noopener,noreferrer')}
+                  className="text-[10px] px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium shadow-sm transition-colors ml-1"
+                >
+                  View
+                </button>
+              )}
             </span>
             <span className="text-gray-300">|</span>
             <span className="text-gray-600">
-              Propensity: <span className={`font-semibold ${propColor.text}`}>{Math.round(quote_propensity * 100)}%</span>
-              {quote_propensity_label && <span className={`ml-1.5 text-xs font-semibold px-2 py-0.5 rounded border ${propColor.bg} ${propColor.text} ${propColor.border}`}>{riskEmoji} {quote_propensity_label}</span>}
+              {fromTriage ? 'Final Propensity' : 'Propensity'}:{' '}
+              <span className={`font-semibold ${propColor.text}`}>
+                {Math.round((fromTriage ? (propertyResult.finalScore ?? quote_propensity) : quote_propensity) * 100)}%
+              </span>
+              {(() => {
+                const displayLabel = fromTriage ? (propertyResult.finalLabel ?? quote_propensity_label) : quote_propensity_label;
+                return displayLabel && <span className={`ml-1.5 text-xs font-semibold px-2 py-0.5 rounded border ${propColor.bg} ${propColor.text} ${propColor.border}`}>{riskEmoji} {displayLabel}</span>;
+              })()}
             </span>
             <div className="ml-auto">
               {!fromTriage && (
@@ -286,28 +299,30 @@ const PropertyDetail = () => {
 
         {/* ── 2. Images Section ── */}
         <div className="rounded-lg overflow-hidden border border-gray-300 bg-white shadow-sm">
-          <SectionBar title="Images Section (Property + Roof)" />
-          <div className="p-3 grid grid-cols-2 gap-3 bg-gray-200">
-            <div className="relative">
+          <SectionBar title={fromPreliminary ? "Images Section (Property)" : "Images Section (Property + Roof)"} />
+          <div className={`p-3 bg-gray-200 ${fromPreliminary ? 'flex justify-center' : 'grid grid-cols-2'} gap-3`}>
+            <div className={`relative ${fromPreliminary ? 'max-w-md w-full' : ''}`}>
               <img
                 src={property.imageUrl}
                 alt="Property front"
-                className="w-full h-48 object-cover"
+                className={fromPreliminary ? 'w-full rounded object-contain' : 'w-full h-48 object-cover'}
               />
               <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs text-center py-1.5">
                 Front Property Image
               </div>
             </div>
-            <div className="relative">
-              <img
-                src={property.roofImageUrl}
-                alt="Roof"
-                className="w-full h-48 object-cover"
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs text-center py-1.5">
-                Roof Image
+            {!fromPreliminary && (
+              <div className="relative">
+                <img
+                  src={property.roofImageUrl}
+                  alt="Roof"
+                  className="w-full h-48 object-cover"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs text-center py-1.5">
+                  Roof Image
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -326,10 +341,10 @@ const PropertyDetail = () => {
                   ))}
                 </tr>
                 <tr>
-                  {paramRow2.map(({ label, value }) => (
+                  {paramRow2.map(({ label, value, render }) => (
                     <td key={label} className="px-3 py-2.5 border-r border-gray-200 last:border-r-0 whitespace-nowrap">
                       <p className="text-gray-400 text-[10px] uppercase tracking-wide">{label}</p>
-                      <p className="font-semibold text-gray-800 text-xs mt-0.5">{value}</p>
+                      {render ? render() : <p className="font-semibold text-gray-800 text-xs mt-0.5">{value}</p>}
                     </td>
                   ))}
                 </tr>
@@ -393,7 +408,7 @@ const PropertyDetail = () => {
             </div>
           </div>
 
-          {/* ── 5. Property Risk Breakdown ── */}
+          {/* ── 5. Property Risk Breakdown — Property Vulnerability Risk row hidden when from preliminary results ── */}
           <div className="rounded-lg overflow-hidden border border-gray-300 bg-white shadow-sm flex flex-col">
             <SectionBar
               title="Property Risk Breakdown (Structured Risks)"
@@ -409,34 +424,23 @@ const PropertyDetail = () => {
                   <tr className="border-b border-gray-200">
                     <th className="text-left text-[10px] text-gray-400 font-medium pb-1.5 uppercase tracking-wide">Risk Factor</th>
                     <th className="text-left text-[10px] text-gray-400 font-medium pb-1.5 uppercase tracking-wide w-16">Score</th>
-                    <th className="text-right text-[10px] text-gray-400 font-medium pb-1.5 uppercase tracking-wide w-14">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {riskBreakdown.map(({ label, score, hasView, tooltipText }) => {
+                  {riskBreakdown
+                    .filter(({ hasView }) => !(fromPreliminary && hasView))
+                    .map(({ label, score, tooltipText }) => {
                     const scoreColor = (score ?? 0) >= 70 ? 'text-red-600' : (score ?? 0) >= 40 ? 'text-amber-600' : 'text-green-600';
 
                     return (
                       <tr
                         key={label}
-                        className="hover:bg-gray-50 transition-colors"
+                        className="hover:bg-gray-50 transition-colors cursor-help"
                         title={tooltipText}
                       >
                         <td className="py-2 text-gray-700 font-medium">{label}</td>
                         <td className="py-2 w-16">
                           <span className={`font-mono font-semibold text-sm ${scoreColor}`}>{score ?? '—'}</span>
-                        </td>
-                        <td className="py-2 text-right">
-                          {hasView ? (
-                            <button
-                              onClick={() => setShowVulnerabilityPopup(true)}
-                              className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors shadow-sm"
-                            >
-                              View
-                            </button>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
                         </td>
                       </tr>
                     );

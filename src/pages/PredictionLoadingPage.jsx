@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePropensity } from "../context/PropensityContext";
-import { rerunPredictions } from "../services/api";
+import { fetchProperties, runPreliminaryPredictions, runFinalPredictions } from "../services/api";
 
-/* ── Icons ─────────────────────────────────────────────────────────────────── */
+/* ── Icons ────────────────────────────────────────────────────────────────── */
 const MapPin      = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>;
 const ImageIcon   = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
 const Target      = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
@@ -16,7 +16,6 @@ const CANVAS_H = 780;
 
 /* ═══════════════════════════════════════════════════════════════════════════
    RUN 1  — Submission Details + Broker + Quote Propensity only
-            (Property Insights ghost removed per user request)
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const R1_DIVISIONS = [
@@ -26,12 +25,12 @@ const R1_DIVISIONS = [
 ];
 
 const R1_NODES = [
-  { id: "broker",          label: "Broker Data",                                  icon: Database,    x: 445, y: 410, div: "div4" },
-  { id: "submission",      label: "Submission Details",                           icon: Database,    x: 855, y: 110, div: "div2" },
-  { id: "exclusion",       label: "Excluding Properties based on configured rules",icon: ShieldAlert, x: 855, y: 210, div: "div2" },
-  { id: "riskScore",       label: "Running ML modeling with submission data",     icon: Target,      x: 855, y: 410, div: "div3" },
-  { id: "propensityScore", label: "Underwriting Propensity Score",                icon: Target,      x: 855, y: 520, div: "div3" },
-  { id: "propensityLevel", label: "Propensity Level (High/Medium/Low)",           icon: Target,      x: 855, y: 610, div: "div3" },
+  { id: "broker",          label: "Broker Data",                                   icon: Database,    x: 445, y: 410, div: "div4" },
+  { id: "submission",      label: "Submission Details",                            icon: Database,    x: 855, y: 110, div: "div2" },
+  { id: "exclusion",       label: "Excluding Properties based on configured rules", icon: ShieldAlert, x: 855, y: 210, div: "div2" },
+  { id: "riskScore",       label: "Running ML modeling with submission data",      icon: Target,      x: 855, y: 410, div: "div3" },
+  { id: "propensityScore", label: "Underwriting Propensity Score",                 icon: Target,      x: 855, y: 520, div: "div3" },
+  { id: "propensityLevel", label: "Propensity Level (High/Medium/Low)",            icon: Target,      x: 855, y: 610, div: "div3" },
 ];
 
 const R1_EDGES = [
@@ -43,20 +42,17 @@ const R1_EDGES = [
 ];
 
 const R1_STEPS = [
-  { text: "Loading broker data (past performance)...",        show: ["broker"],           waitTime: 700  },
-  { text: "Processing submission details...",                  show: ["submission"],        waitTime: 700  },
-  { text: "Evaluating property exclusions...",                 show: ["exclusion"],         edges: ["su-ex"],                 waitTime: 1000 },
-  { text: "Running ML modeling with submission data...",       show: ["riskScore"],         edges: ["div2-div3","div4-div3"], waitTime: 2000 },
-  { text: "Evaluating underwriting propensity score...",       show: ["propensityScore"],   edges: ["rs-ps"],                 waitTime: 1800 },
-  { text: "Determining propensity level...",                   show: ["propensityLevel"],   edges: ["ps-pl"],                 waitTime: 2500 },
+  { text: "Loading broker data (past performance)...",       show: ["broker"],           waitTime: 700  },
+  { text: "Processing submission details...",                show: ["submission"],        waitTime: 700  },
+  { text: "Evaluating property exclusions...",               show: ["exclusion"],         edges: ["su-ex"],                 waitTime: 1000 },
+  { text: "Running ML modeling with submission data...",     show: ["riskScore"],         edges: ["div2-div3","div4-div3"], waitTime: 2000 },
+  { text: "Evaluating underwriting propensity score...",     show: ["propensityScore"],   edges: ["rs-ps"],                 waitTime: 1800 },
+  { text: "Determining propensity level...",                 show: ["propensityLevel"],   edges: ["ps-pl"],                 waitTime: 2500 },
 ];
 
-/* ── helpers (shared) ───────────────────────────────────────────────────── */
 function getR1Division(id)  { return R1_DIVISIONS.find(d => d.id === id); }
 function getR1NodeOrDiv(id) { return R1_NODES.find(n => n.id === id) || getR1Division(id); }
 
-/* generateCurve is reused in both Run1 (div lookup = R1_DIVISIONS) and
-   Run2 (all same-div nodes → div lookup never called)                    */
 function generateCurve(fromObj, toObj, divLookup = getR1Division) {
   const fromW = fromObj.w || 250, fromH = fromObj.h || 46;
   const toW   = toObj.w   || 250, toH   = toObj.h   || 46;
@@ -96,36 +92,9 @@ function generateCurve(fromObj, toObj, divLookup = getR1Division) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   RUN 2  — Full workflow diagram using OLD UI style
-   Canvas layout (1600 × 780):
-
-   Left side  (x=40..740):
-     [Low Propensity Submissions]  x=40, y=40, w=260, h=60
-     [BPO Team]                    x=40, y=430, w=220, h=60   (below Low)
-     [Medium/High Submissions]     x=430, y=40, w=270, h=60
-     [Quote Propensity div]        x=310, y=400, w=380, h=350
-       riskScore      x=330, y=460
-       propensityScore x=330, y=570
-       propensityLevel x=330, y=660
-
-   Right side (x=780..1570):
-     [Property Insights div]       x=780, y=30, w=790, h=690
-       address         x=960, y=70
-       imagery         x=960, y=170
-       frontRoof       x=810, y=290
-       objectDetect    x=810, y=410
-       threat          x=1110, y=290
-       proximity       x=1110, y=410
-       vulnerability   x=960, y=530
-
-   Arrows:
-     ① Low  → BPO        M 170 100 L 150 430   label "Intelligent Triage"
-     ② Med/High → PI     M 700 70 L 780 70
-     ③ Med/High → QP     M 565 100 L 565 400   label "Propensity scores"
-     ④ PI vuln → QP      M 1085 576 L 1085 640 L 690 640   label "Property vulnerability scores"
+   RUN 2  — Full workflow diagram
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Run-2 PI nodes — same IDs & labels as R1, shifted to sit inside PI div (x=780,y=30) */
 const R2_PI_NODES = [
   { id: "address",       label: "Property Address",                                          icon: MapPin,      x: 1080, y: 70  },
   { id: "imagery",       label: "Imagery and spatial data from 10+ leading companies",        icon: ImageIcon,   x: 1080, y: 170 },
@@ -136,14 +105,12 @@ const R2_PI_NODES = [
   { id: "vulnerability", label: "Property vulnerability score · Wildfire & hurricane scores", icon: ShieldAlert, x: 1080, y: 530 },
 ];
 
-/* Run-2 QP nodes — same as R1 div3, shifted to sit inside QP div (x=310,y=400) */
 const R2_QP_NODES = [
   { id: "riskScore",       label: "Property Risk Score",               icon: Target, x: 425, y: 440 },
   { id: "propensityScore", label: "Underwriting Propensity Score",     icon: Target, x: 425, y: 550 },
   { id: "propensityLevel", label: "Propensity Level (High/Medium/Low)",icon: Target, x: 425, y: 640 },
 ];
 
-/* Run-2 PI internal edges (reuses generateCurve — same IDs → special map applies) */
 const R2_PI_EDGE_PAIRS = [
   ["address",      "imagery"],
   ["imagery",      "frontRoof"],
@@ -154,13 +121,11 @@ const R2_PI_EDGE_PAIRS = [
   ["proximity",    "vulnerability"],
 ];
 
-/* Run-2 QP internal edges */
 const R2_QP_EDGE_PAIRS = [
   ["riskScore", "propensityScore"],
   ["propensityScore", "propensityLevel"],
 ];
 
-/* Node timing: visibleFrom, activeAt, completedFrom */
 const R2_TIMING = {
   address:         { vis:4,  act:4,  done:5  },
   imagery:         { vis:5,  act:5,  done:6  },
@@ -183,29 +148,25 @@ function r2State(id, step) {
 }
 
 const R2_ANIM = [
-  { wait: 600,  status: "Analysing first-run results…" },                                       // 0
-  { wait: 1000, status: "Routing submissions by propensity tier…" },                            // 1 — sources
-  { wait: 1000, status: "Sending Low Propensity to BPO via Intelligent Triage…" },              // 2 — BPO + edge①
-  { wait: 800,  status: "Initiating Property Insights pipeline…" },                             // 3 — PI div
-  { wait: 1000, status: "Receiving property address…" },                                        // 4 — address
-  { wait: 1800, status: "Fetching imagery and spatial data from 10+ companies…" },              // 5 — imagery
-  { wait: 3200, status: "Acquiring front/roof images & analysing threat proximity…" },          // 6 — frontRoof + threat
-  { wait: 2800, status: "Detecting structural features & running proximity analysis…" },        // 7 — objectDetect + proximity
-  { wait: 1800, status: "Calculating combined property vulnerability score…" },                 // 8 — vulnerability
-  { wait: 2200, status: "Computing property risk score…" },                                     // 9 — QP div + riskScore + edges③④
-  { wait: 2000, status: "Evaluating underwriting propensity score…" },                         // 10 — propensityScore
-  { wait: 2800, status: "Determining final propensity level…" },                               // 11 — propensityLevel
-  { wait: 700,  status: "Classification complete — High / Medium / Low" },                     // 12 → navigate
+  { wait: 600,  status: "Analysing first-run results…" },
+  { wait: 1000, status: "Routing submissions by propensity tier…" },
+  { wait: 1000, status: "Sending Low Propensity to BPO via Intelligent Triage…" },
+  { wait: 800,  status: "Initiating Property Insights pipeline…" },
+  { wait: 1000, status: "Receiving property address…" },
+  { wait: 1800, status: "Fetching imagery and spatial data from 10+ companies…" },
+  { wait: 3200, status: "Acquiring front/roof images & analysing threat proximity…" },
+  { wait: 2800, status: "Detecting structural features & running proximity analysis…" },
+  { wait: 1800, status: "Calculating combined property vulnerability score…" },
+  { wait: 2200, status: "Computing property risk score…" },
+  { wait: 2000, status: "Evaluating underwriting propensity score…" },
+  { wait: 2800, status: "Determining final propensity level…" },
+  { wait: 700,  status: "Classification complete — High / Medium / Low" },
 ];
 
-/* ── Run2Canvas ─────────────────────────────────────────────────────────── */
 function Run2Canvas({ animStep }) {
   const s = animStep;
-
-  /* helper: find node object by id across both PI and QP lists */
   const findNode = (id) => R2_PI_NODES.find(n=>n.id===id) || R2_QP_NODES.find(n=>n.id===id);
 
-  /* render a node with processing/completed CSS classes */
   const NodeEl = ({ id, x, y }) => {
     const state = r2State(id, s);
     if (!state) return null;
@@ -229,11 +190,9 @@ function Run2Canvas({ animStep }) {
     );
   };
 
-  /* edge helpers */
   const eC = (done) => `path-base ${done ? "path-completed":"path-progress-flow"}`;
   const eM = (done) => `url(#${done ? "r2-done":"r2-prog"})`;
 
-  /* PI internal edge: show once 'to' node becomes visible (step >= toVis) */
   const piEdge = (fromId, toId) => {
     const toT  = R2_TIMING[toId];
     const fromT= R2_TIMING[fromId];
@@ -244,7 +203,6 @@ function Run2Canvas({ animStep }) {
     return <path key={`${fromId}-${toId}`} d={generateCurve(fromObj, toObj)} className={eC(done)} markerEnd={eM(done)} />;
   };
 
-  /* QP internal edge */
   const qpEdge = (fromId, toId) => {
     const toT = R2_TIMING[toId];
     if (!toT || s < toT.vis) return null;
@@ -256,52 +214,47 @@ function Run2Canvas({ animStep }) {
 
   return (
     <div style={{ position:"absolute", top:0, left:0, width:CANVAS_W, height:CANVAS_H }}>
-
-      {/* ── SVG layer ── */}
       <svg style={{ position:"absolute", width:"100%", height:"100%", pointerEvents:"none" }}>
         <defs>
           <marker id="r2-prog" viewBox="0 0 10 10" markerWidth="4.5" markerHeight="4.5" refX="7" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#3b82f6"/></marker>
           <marker id="r2-done" viewBox="0 0 10 10" markerWidth="4.5" markerHeight="4.5" refX="7" refY="5" orient="auto"><path d="M 0 0 L 10 5 L 0 10 Z" fill="#2563eb"/></marker>
         </defs>
 
-        {/* ── Divider: separates BPO / Intelligent-Triage path from QP / Propensity-scores path ── */}
         {s>=1 && (
           <line x1="308" y1="50" x2="308" y2="710"
             stroke="#d1d5db" strokeWidth="1.5" strokeDasharray="8 5"
           />
         )}
-
-        {/* ① Low Propensity → BPO */}
         {s>=2 && <>
           <path d="M 110 100 L 110 430" className={eC(s>=3)} markerEnd={eM(s>=3)} />
           <text x="125" y="265" fill="black" fontSize="14" fontWeight="500">Intelligent Triage</text>
         </>}
-
-        {/* ② Medium/High → Property Insights */}
         {s>=3 && (
           <path d="M 675 70 L 900 70" className={eC(s>=9)} markerEnd={eM(s>=9)} />
         )}
-
-        {/* ③ Medium/High → Quote Propensity  (Propensity scores) */}
         {s>=10 && <>
           <path d="M 550 100 L 550 370" className={eC(s>=12)} markerEnd={eM(s>=12)} />
           <text x="560" y="235" fill="black" fontSize="14" fontWeight="500">Preliminary propensity scores</text>
         </>}
-
-        {/* ④ Property Insights (vulnerability) → Quote Propensity  (Property vulnerability scores) */}
         {s>=10 && <>
           <path d="M 1205 576 L 1205 663 L 685 663" className={eC(s>=12)} markerEnd={eM(s>=12)} />
           <text x="945" y="655" fill="black" fontSize="14" fontWeight="500" textAnchor="middle">Property vulnerability scores</text>
         </>}
-
-        {/* PI internal edges */}
         {R2_PI_EDGE_PAIRS.map(([f,t]) => piEdge(f, t))}
-
-        {/* QP internal edges */}
         {R2_QP_EDGE_PAIRS.map(([f,t]) => qpEdge(f, t))}
       </svg>
 
-      {/* ── Source boxes (division-box style) ── */}
+      {s>=1 && (
+        <div style={{ position:"absolute", left:10, top:-35, whiteSpace:"nowrap" }} className="fade-in">
+          <h2 className="text-[17px] font-bold text-gray-800">Triaging Low Propensity Submissions</h2>
+        </div>
+      )}
+      {s>=1 && (
+        <div style={{ position:"absolute", left:490, top:-35, whiteSpace:"nowrap" }} className="fade-in">
+          <h2 className="text-[17px] font-bold text-gray-800">Vulnerability Assessment and Recalculation of Propensity Levels for Medium/High Propensity Submissions</h2>
+        </div>
+      )}
+
       {s>=1 && (
         <div className={`division-box fade-in ${s>=2?"completed":"processing"}`}
              style={{ position:"absolute", left:20, top:40, width:180, height:60, display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -314,16 +267,12 @@ function Run2Canvas({ animStep }) {
           <div className="division-label" style={{ position:"static", fontSize:14 }}>Medium / High Submissions</div>
         </div>
       )}
-
-      {/* ── BPO Team ── */}
       {s>=2 && (
         <div className={`division-box fade-in ${s>=3?"completed":"processing"}`}
              style={{ position:"absolute", left:20, top:430, width:180, height:60, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div className="division-label" style={{ position:"static", fontSize:14 }}>BPO Team</div>
         </div>
       )}
-
-      {/* ── Property Insights Division ── */}
       {s>=3 && (
         <div
           className={`division-box fade-in ${s>=9?"completed":"processing"}`}
@@ -332,11 +281,7 @@ function Run2Canvas({ animStep }) {
           <div className="division-label">Property Insights</div>
         </div>
       )}
-
-      {/* PI Nodes */}
       {R2_PI_NODES.map(n => <NodeEl key={n.id} id={n.id} x={n.x} y={n.y} />)}
-
-      {/* ── Quote Propensity Division ── */}
       {s>=9 && (
         <div
           className={`division-box fade-in ${s>=12?"completed":"processing"}`}
@@ -345,10 +290,7 @@ function Run2Canvas({ animStep }) {
           <div className="division-label">Quote Propensity</div>
         </div>
       )}
-
-      {/* QP Nodes */}
       {R2_QP_NODES.map(n => <NodeEl key={n.id} id={n.id} x={n.x} y={n.y} />)}
-
     </div>
   );
 }
@@ -360,7 +302,15 @@ export default function PredictionLoadingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const isRerun  = new URLSearchParams(location.search).get("mode") === "rerun";
-  const { excludedIds, setRun2Properties } = usePropensity();
+
+  const {
+    properties: ctxProperties, setProperties,
+    excludedIds,
+    run1Properties,
+    setRun1Properties, setRun1ShapGlobal,
+    setRun2Properties,
+    lowThreshold,
+  } = usePropensity();
 
   /* Run 1 state */
   const [visibleNodes,    setVisibleNodes]    = useState([]);
@@ -371,15 +321,14 @@ export default function PredictionLoadingPage() {
   const [r1Finished,      setR1Finished]      = useState(false);
 
   /* Run 2 state */
-  const [animStep, setAnimStep] = useState(0);
-  const [r2Status, setR2Status] = useState(R2_ANIM[0].status);
+  const [animStep,   setAnimStep]   = useState(0);
+  const [r2Status,   setR2Status]   = useState(R2_ANIM[0].status);
   const [r2Finished, setR2Finished] = useState(false);
 
   const [scale, setScale] = useState(1);
   const canvasWrapRef = useRef(null);
 
-  /* responsive scale — uses ResizeObserver on the actual container
-     so the sidebar width is automatically excluded                 */
+  /* Responsive scale */
   useEffect(() => {
     const HEADER_H = 60, PAD = 24;
     const compute = (w, h) => {
@@ -387,9 +336,7 @@ export default function PredictionLoadingPage() {
       const sy = (h  - HEADER_H - PAD*2) / CANVAS_H;
       setScale(Math.min(sx, sy, 1));
     };
-    // Initial estimate using window (fallback)
     compute(window.innerWidth, window.innerHeight);
-    // Precise measurement once the container is mounted
     if (!canvasWrapRef.current) return;
     const obs = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
@@ -399,7 +346,7 @@ export default function PredictionLoadingPage() {
     return () => obs.disconnect();
   }, []);
 
-  /* Run 1 typewriter */
+  /* Run 1 typewriter helper */
   const typeText = (step) => new Promise(resolve => {
     let i=0;
     if (step.show?.length>0) setDisplayTexts({});
@@ -425,12 +372,24 @@ export default function PredictionLoadingPage() {
     const iv=setInterval(()=>{ p+=4; if(p>=100){clearInterval(iv);resolve();} },15);
   });
 
-  /* Run 1 animation */
+  /* Run 1 animation + API call */
   useEffect(() => {
     if (isRerun) return;
-    let alive=true;
+    let alive = true;
+
+    // Fire the ML API call concurrently with the animation
+    const apiPromise = fetchProperties()
+      .then(props => {
+        if (alive) setProperties(props);
+        return runPreliminaryPredictions(props, {}, {});
+      })
+      .catch(err => {
+        console.warn('Run 1 API failed, using mock data:', err.message);
+        return null;
+      });
+
     const run = async () => {
-      const done=[];
+      const done = [];
       for (const step of R1_STEPS) {
         if (!alive) break;
         if (step.show?.length>0) { setActiveWaitNodes(step.show); setVisibleNodes(prev=>[...prev,...step.show]); }
@@ -443,17 +402,51 @@ export default function PredictionLoadingPage() {
           setActiveWaitNodes([]);
         }
       }
-      if (alive) setR1Finished(true);
+      if (alive) {
+        // Wait for API to finish before showing "Next"
+        const result = await apiPromise;
+        if (result && alive) {
+          const preds = result.predictions ?? [];
+          const locals = result.shap_local ?? [];
+          setRun1Properties(preds.map((p, i) => {
+            const sl = locals[i] ?? {};
+            const shap_values = Object.entries(sl).map(([feature, val]) => ({
+              feature,
+              val,
+              value: p[feature] ?? null
+            }));
+            return { ...p, shap_local: sl, shap_values };
+          }));
+          setRun1ShapGlobal(
+            (result.shap_global ?? []).map(s => ({ feature: s.feature, contribution: s.mean_abs_shap ?? s.contribution ?? 0 }))
+          );
+        }
+        setR1Finished(true);
+      }
     };
     run();
-    return () => { alive=false; };
+    return () => { alive = false; };
   }, []); // eslint-disable-line
 
-  /* Run 2 animation */
+  /* Run 2 animation + API call */
   useEffect(() => {
     if (!isRerun) return;
-    let alive=true;
-    const apiPromise = rerunPredictions(excludedIds).catch(()=>[]);
+    let alive = true;
+
+    // Enrich rows with Run 1 preliminary scores before sending
+    const rows = ctxProperties.map(base => {
+      const r1 = run1Properties.find(p => p.submission_id === base.submission_id);
+      return {
+        submission_id: base.submission_id,
+        address: base.Property_address || base.address || '',
+        property_state: base.Property_state || base.state || '',
+        quote_propensity: r1?.quote_propensity ?? 0,
+        quote_propensity_label: r1?.quote_propensity_label ?? '',
+      };
+    });
+    const apiPromise = runFinalPredictions(rows, excludedIds, {}, {})
+      .catch(err => { console.warn('Run 2 API failed:', err.message); return null; });
+
     const run = async () => {
       for (let i=0; i<R2_ANIM.length; i++) {
         if (!alive) break;
@@ -462,32 +455,34 @@ export default function PredictionLoadingPage() {
         await new Promise(r=>setTimeout(r, R2_ANIM[i].wait));
       }
       if (alive) {
-        const results = await apiPromise;
-        setRun2Properties(results);
+        const result = await apiPromise;
+        if (result && alive) {
+          setRun2Properties(result.predictions ?? []);
+        }
         setR2Finished(true);
       }
     };
     run();
-    return () => { alive=false; };
+    return () => { alive = false; };
   }, []); // eslint-disable-line
 
   /* ── Render ── */
   return (
-    <div className="bg-gray-50 flex flex-col w-full" style={{ height:"100%", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+    <div className="bg-gray-50 flex flex-col w-full" style={{ minHeight:"100vh", display:"flex", flexDirection:"column", overflow:"hidden" }}>
 
       {/* Header */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-between w-full" style={{ flexShrink:0 }}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between w-full" style={{ flexShrink:0 }}>
         <div className="flex items-center gap-3">
           <div className="h-4 w-px bg-gray-300"/>
           <div>
             <h1 className="text-xl font-bold text-gray-900">
               {isRerun ? "Re-Running AI Predictions" : "Running AI Predictions"}
             </h1>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {isRerun
-                ? `${excludedIds.length} low-propensity properties excluded · Full pipeline with Property Insights now active`
-                : "Processing initial evaluation pass — Submission Details, Broker Profiles & Quote Propensity"}
-            </p>
+            {!isRerun && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                Processing initial evaluation pass — Submission Details, Broker Profiles & Quote Propensity
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm max-w-md">
@@ -497,8 +492,9 @@ export default function PredictionLoadingPage() {
       </div>
 
       {/* Scaled canvas */}
-      <div ref={canvasWrapRef} style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", padding:12, position:"relative" }}>
-        
+      <div ref={canvasWrapRef} style={{ flex:1, display:"flex", alignItems:"flex-start", justifyContent:"center", overflow:"hidden", padding:"40px 12px 12px 12px", position:"relative" }}>
+
+        {/* Run 2 — View Results button */}
         {r2Finished && (
           <div style={{ position:"absolute", bottom:24, right:24, zIndex:50 }} className="fade-in">
             <button
@@ -512,6 +508,8 @@ export default function PredictionLoadingPage() {
             </button>
           </div>
         )}
+
+        {/* Run 1 — Next button */}
         {r1Finished && !isRerun && (
           <div style={{ position:"absolute", bottom:24, right:24, zIndex:50 }} className="fade-in">
             <button
@@ -525,15 +523,13 @@ export default function PredictionLoadingPage() {
             </button>
           </div>
         )}
+
         <div style={{ width:CANVAS_W*scale, height:CANVAS_H*scale, position:"relative", flexShrink:0 }}>
           <div style={{ position:"absolute", top:0, left:0, width:CANVAS_W, height:CANVAS_H, transform:`scale(${scale})`, transformOrigin:"top left" }}>
 
             {isRerun ? (
-              /* ── RUN 2 ── */
               <Run2Canvas animStep={animStep} />
-
             ) : (
-              /* ── RUN 1 — Submission + Broker + Quote Propensity (no PI ghost) ── */
               <>
                 <svg style={{ position:"absolute", width:"100%", height:"100%", pointerEvents:"none" }}>
                   <defs>

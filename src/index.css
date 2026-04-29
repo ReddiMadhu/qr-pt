@@ -240,8 +240,7 @@ a,
 .division-box.processing .division-label {
   color: #2563eb;
 }
-
-/* ── Smart Assign Diagram Animations ────────────────────────────── */
+/* -- Smart Assign Diagram Animations ------------------------------ */
 
 @keyframes flow-smart {
   from {
