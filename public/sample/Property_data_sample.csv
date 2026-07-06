@@ -1,0 +1,7 @@
+submission_id,submission_channel,occupancy_type,property_age,property_value,Property_county,cover_type,building_coverage_limit,contents_coverage_limit,broker_company
+SUB0001,Broker,Vacant,23,3141930,"Worcester (County) (in (P)MSA 1120,2600,9240)",Contents Only,2909467.51,1396385.21,Heartland Group
+SUB0002,Broker,Primary Residence,62,3554788,"Audrain (County)",Contents Only,3040728.83,1169334.54,National Brokers
+SUB0003,Online,Rental Property,36,3058690,"Grundy (County)",Building Only,2559011.31,1037134.52,
+SUB0008,Online,Rental Property,50,4819756,"Aransas (County)",Both,4617581.93,2009177.54,
+SUB0011,Broker,Secondary Home,45,2755268,"Leon (County)",Contents Only,2349538.82,548310.69,Metro Risk Solutions
+SUB0012,Broker,Secondary Home,61,4909344,"Humboldt (County)",Building Only,4441112.02,1654888.33,Coastal Risk Advisors

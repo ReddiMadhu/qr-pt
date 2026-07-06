@@ -218,6 +218,32 @@ const DataUploadPage = () => {
         }
     };
 
+    const [loadingSample, setLoadingSample] = useState(false);
+
+    const handleUseSampleFile = async () => {
+        setLoadingSample(true);
+        try {
+            const response = await fetch('/sample/Property_data_sample.csv');
+            const text = await response.text();
+            const parsedData = parseCSV(text);
+            if (parsedData.length < 2) return;
+            const headers = parsedData[0];
+            const rows = parsedData.slice(1).map(rowVals =>
+                Object.fromEntries(headers.map((h, i) => [h, rowVals[i] ?? '']))
+            );
+            setCsvRows(rows);
+            setUploaded(true);
+            setFileName('Property_data_sample.csv (Sample)');
+            setShowDetails(false);
+            setSelectedChannel('All');
+        } catch (err) {
+            console.error('Failed to load sample file:', err);
+            alert('Could not load the sample file. Please try uploading manually.');
+        } finally {
+            setLoadingSample(false);
+        }
+    };
+
     const handleRunPredictions = async () => {
         if (!csvRows.length) return;
         setIsRunning(true);
@@ -328,6 +354,7 @@ const DataUploadPage = () => {
                 <p className="text-sm text-gray-500 mb-2 text-center">Upload Property data for inference</p>
 
                 {inputType === 'csv' ? (
+                    <>
                     <div className="border border-dashed border-gray-300 rounded-xl bg-white p-8 text-center relative overflow-hidden group shadow-md transition-colors hover:border-blue-400">
                         <div className="absolute inset-0 bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                         <input
@@ -352,6 +379,61 @@ const DataUploadPage = () => {
                             </button>
                         </div>
                     </div>
+
+                    {/* ── Or use a sample file ────────────────────────────── */}
+                    <div className="flex items-center gap-4 my-5">
+                        <div className="flex-1 border-t border-gray-200"></div>
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">or</span>
+                        <div className="flex-1 border-t border-gray-200"></div>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-xl bg-gradient-to-br from-blue-50/60 to-indigo-50/40 p-6 shadow-sm transition-all hover:shadow-md">
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
+                            <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-800">Use Sample File</h3>
+                                    <p className="text-xs text-gray-500 mt-0.5">Pre-loaded demo data — 6 property submissions, ready to go</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                                <button
+                                    onClick={handleUseSampleFile}
+                                    disabled={loadingSample}
+                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm ${
+                                        loadingSample
+                                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                            : 'bg-blue-600 hover:bg-blue-700 text-white hover:-translate-y-0.5 shadow-md'
+                                    }`}
+                                >
+                                    {loadingSample ? (
+                                        <>
+                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                            Loading…
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
+                                            Use This File
+                                        </>
+                                    )}
+                                </button>
+                                <a
+                                    href="/sample/Property_data_sample.csv"
+                                    download
+                                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                    Download Sample
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    </>
                 ) : (
                     <div className="space-y-4">
                         <div className="border border-dashed border-gray-300 rounded-xl bg-white p-8 text-center relative overflow-hidden group shadow-md transition-colors hover:border-blue-400">
