@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePropensity } from '../context/PropensityContext';
 
@@ -69,15 +69,6 @@ const applyEvaluation = (df, exclusionRules) => {
 // ─── Pie chart colours per channel ────────────────────────────────────────────
 const CHANNEL_COLORS = ['#3b82f6', '#1e3a8a', '#06b6d4', '#6366f1', '#f59e0b'];
 
-const MOCK_DATA = [
-    { sub: 'SUB00012', ch: 'Broker', date: '1/24/2025', app: 'APP00034', prop: 'PR00034', pol: 'PO00034', bro: 'BR00898', desc: 'She either entire l...' },
-    { sub: 'SUB00137', ch: 'Broker', date: '11/1/2025', app: 'APP00137', prop: 'PR00137', pol: 'PO00137', bro: 'BR01554', desc: 'Building piece close c...' },
-    { sub: 'SUB00164', ch: 'Online', date: '5/10/2025', app: 'APP00164', prop: 'PR00164', pol: 'PO00164', bro: '-', desc: 'Possible collection gove...' },
-    { sub: 'SUB07726', ch: 'Broker', date: '10/30/2025', app: 'APP07726', prop: 'PR07726', pol: 'PO07726', bro: 'BR01768', desc: 'Knowledge result opti...' },
-    { sub: 'SUB09890', ch: 'Broker', date: '11/5/2025', app: 'APP09890', prop: 'PR00890', pol: 'PO09890', bro: 'BR03118', desc: 'Base fish address tend a...' },
-    { sub: 'SUB00244', ch: 'Broker', date: '1/5/2025', app: 'APP00244', prop: 'PR00244', pol: 'PO00244', bro: 'BR03044', desc: 'Final nati...' },
-];
-
 const parseCSV = (text) => {
     const rows = [];
     let curVal = '';
@@ -134,10 +125,24 @@ const DataUploadPage = () => {
         fileName, setFileName
     } = usePropensity();
 
-    const [inputType, setInputType] = useState('csv');
+    const [inputType, setInputType] = useState('sample');
     const [isRunning, setIsRunning] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
     const [selectedChannel, setSelectedChannel] = useState('All');
+    const [isDragOver, setIsDragOver] = useState(false);
+    const [schema, setSchema] = useState(null);
+    const [validationError, setValidationError] = useState(null);
+
+    // Fetch expected schema on mount
+    useEffect(() => {
+        fetch('/sample/schema.json')
+            .then(res => {
+                if (!res.ok) throw new Error('Schema not found');
+                return res.json();
+            })
+            .then(data => setSchema(data))
+            .catch(err => console.error('Failed to load schema:', err));
+    }, []);
 
     // State for file handling and processing
     const [acordFiles, setAcordFiles] = useState([]);
@@ -146,6 +151,35 @@ const DataUploadPage = () => {
 
     // Ref to trigger hidden file input
     const fileInputRef = useRef(null);
+
+    // ── Derive column headers from csvRows ──────────────────────────────────
+    const csvHeaders = useMemo(() => {
+        if (!csvRows.length) return [];
+        return Object.keys(csvRows[0]);
+    }, [csvRows]);
+
+    // ── Dynamic stat computation ────────────────────────────────────────────
+    const dataStats = useMemo(() => {
+        if (!csvRows.length) return null;
+        const totalRecords = csvRows.length;
+        const totalColumns = csvHeaders.length;
+        let numerical = 0;
+        let categorical = 0;
+        csvHeaders.forEach(h => {
+            const vals = csvRows.map(r => r[h]).filter(v => v !== '' && v !== undefined && v !== null);
+            const numCount = vals.filter(v => !isNaN(Number(v))).length;
+            if (vals.length > 0 && numCount / vals.length > 0.5) numerical++;
+            else categorical++;
+        });
+        const seen = new Set();
+        let duplicates = 0;
+        csvRows.forEach(row => {
+            const key = JSON.stringify(row);
+            if (seen.has(key)) duplicates++;
+            else seen.add(key);
+        });
+        return { totalRecords, totalColumns, numerical, categorical, duplicates };
+    }, [csvRows, csvHeaders]);
 
     // --- Logic Functions ---
 
@@ -194,19 +228,108 @@ const DataUploadPage = () => {
         }
     };
 
+    // Validation function
+    const validateCSV = (parsedData, schemaObj) => {
+        if (!schemaObj) return { isValid: true };
+        if (parsedData.length < 1) {
+            return { isValid: false, error: 'The CSV file is empty.' };
+        }
+        
+        const headers = parsedData[0];
+        
+        // 1. Column Count Validation
+        if (headers.length !== schemaObj.expectedColumnCount) {
+            return {
+                isValid: false,
+                error: `Column count mismatch. Expected exactly ${schemaObj.expectedColumnCount} columns, but found ${headers.length}.`
+            };
+        }
+        
+        // 2. Column Name Validation (case insensitive)
+        const expectedColumns = schemaObj.columns;
+        const mismatches = [];
+        expectedColumns.forEach((col, idx) => {
+            const uploadedColName = headers[idx];
+            if (!uploadedColName) {
+                mismatches.push(`Column ${idx + 1} is missing (expected "${col.name}")`);
+            } else if (uploadedColName.toLowerCase() !== col.name.toLowerCase()) {
+                mismatches.push(`Column ${idx + 1} is named "${uploadedColName}" (expected "${col.name}")`);
+            }
+        });
+        
+        if (mismatches.length > 0) {
+            return {
+                isValid: false,
+                error: `Header columns do not match expected format:\n` + mismatches.join('\n')
+            };
+        }
+        
+        // 3. Datatype Validation per Row
+        const dataRows = parsedData.slice(1);
+        for (let rIdx = 0; rIdx < dataRows.length; rIdx++) {
+            const row = dataRows[rIdx];
+            for (let cIdx = 0; cIdx < expectedColumns.length; cIdx++) {
+                const colSpec = expectedColumns[cIdx];
+                const rawVal = (row[cIdx] ?? '').trim();
+                
+                if (rawVal !== '') {
+                    if (colSpec.type === 'integer') {
+                        const num = Number(rawVal);
+                        if (isNaN(num) || !Number.isInteger(num)) {
+                            return {
+                                isValid: false,
+                                error: `Datatype mismatch at row ${rIdx + 1}, column "${colSpec.name}": Expected integer, but found "${rawVal}".`
+                            };
+                        }
+                    } else if (colSpec.type === 'number') {
+                        const num = Number(rawVal);
+                        if (isNaN(num)) {
+                            return {
+                                isValid: false,
+                                error: `Datatype mismatch at row ${rIdx + 1}, column "${colSpec.name}": Expected decimal number, but found "${rawVal}".`
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        
+        return { isValid: true };
+    };
+
     const handleFileUpload = (e) => {
         const file = e.target.files?.[0];
         if (file) {
-            setFileObj(file);
-            setFileName(file.name);
-            setUploaded(true);
-            setShowDetails(false);
-            setSelectedChannel('All');
+            setValidationError(null);
             const reader = new FileReader();
             reader.onload = (evt) => {
                 const text = evt.target.result;
                 const parsedData = parseCSV(text);
-                if (parsedData.length < 2) return;
+                if (parsedData.length < 2) {
+                    setValidationError('The uploaded file must contain a header and at least one row of data.');
+                    setCsvRows([]);
+                    setUploaded(false);
+                    setFileName('');
+                    setFileObj(null);
+                    return;
+                }
+                
+                // Perform validation
+                const check = validateCSV(parsedData, schema);
+                if (!check.isValid) {
+                    setValidationError(check.error);
+                    setCsvRows([]);
+                    setUploaded(false);
+                    setFileName('');
+                    setFileObj(null);
+                    return;
+                }
+                
+                setFileObj(file);
+                setFileName(file.name);
+                setUploaded(true);
+                setShowDetails(false);
+                setSelectedChannel('All');
                 
                 const headers = parsedData[0];
                 const rows = parsedData.slice(1).map(rowVals => {
@@ -222,6 +345,7 @@ const DataUploadPage = () => {
 
     const handleUseSampleFile = async () => {
         setLoadingSample(true);
+        setValidationError(null);
         try {
             const response = await fetch('/sample/Property_data_sample.csv');
             const text = await response.text();
@@ -335,166 +459,175 @@ const DataUploadPage = () => {
             <section>
                 <h2 className="text-xl font-bold text-gray-800 text-center mb-6">Property - Data Upload</h2>
 
-                <div className="flex items-center justify-center gap-3 mb-6">
-                    <span className="text-sm font-medium text-gray-600">Select Input Type</span>
+                {/* ── Toggle: Use Sample File / Upload ──────────────────── */}
+                <div className="flex items-center justify-center gap-1 mb-6 bg-gray-100 rounded-xl p-1 max-w-sm mx-auto">
                     <button
-                        onClick={() => setInputType('csv')}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${inputType === 'csv' ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200'}`}
+                        onClick={() => {
+                            setInputType('sample');
+                            handleUseSampleFile();
+                        }}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                            inputType === 'sample'
+                                ? 'bg-white text-blue-700 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                        }`}
                     >
-                        CSV File
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        Use Sample File
                     </button>
                     <button
-                        onClick={() => setInputType('acord')}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${inputType === 'acord' ? 'bg-blue-600 text-white border-blue-500' : 'bg-white text-gray-600 border-gray-200'}`}
+                        onClick={() => setInputType('upload')}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+                            inputType === 'upload'
+                                ? 'bg-white text-blue-700 shadow-sm'
+                                : 'text-gray-500 hover:text-gray-700'
+                        }`}
                     >
-                        ACORD Forms
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                        Upload
                     </button>
                 </div>
 
-                <p className="text-sm text-gray-500 mb-2 text-center">Upload Property data for inference</p>
+                {/* ── Schema Requirements / Validation Guidelines ────────────────── */}
+                {schema && (
+                    <div className="bg-blue-50/40 border border-blue-100 rounded-2xl p-5 max-w-4xl mx-auto mb-6 text-left">
+                        <details className="group">
+                            <summary className="flex items-center justify-between font-bold text-blue-800 text-sm cursor-pointer select-none">
+                                <span className="flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    View Expected CSV Template Schema (Validation Requirements)
+                                </span>
+                                <svg className="w-4 h-4 text-blue-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </summary>
+                            <div className="mt-4 border-t border-blue-100 pt-4">
+                                <p className="text-xs text-blue-700 mb-3">
+                                    Your uploaded CSV must exactly match the column structure, order, names, and types of the template.
+                                    Expected columns: <strong>{schema.expectedColumnCount}</strong>.
+                                </p>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    {schema.columns.map((col) => (
+                                        <div key={col.index} className="bg-white border border-blue-50 rounded-xl p-2.5 shadow-sm text-xs flex justify-between items-center">
+                                            <div>
+                                                <span className="text-gray-400 font-mono mr-1.5">{col.index + 1}.</span>
+                                                <span className="font-semibold text-gray-700">{col.name}</span>
+                                            </div>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                col.type === 'integer' || col.type === 'number'
+                                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                    : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                            }`}>
+                                                {col.type}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                )}
 
-                {inputType === 'csv' ? (
-                    <>
-                    <div className="border border-dashed border-gray-300 rounded-xl bg-white p-8 text-center relative overflow-hidden group shadow-md transition-colors hover:border-blue-400">
-                        <div className="absolute inset-0 bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                        <input
-                            type="file"
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                            onChange={handleFileUpload}
-                            accept=".csv,.xlsx,.xls,.pdf"
-                        />
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10 w-full max-w-4xl mx-auto pointer-events-none">
-                            <div className="text-left">
-                                <h3 className="text-lg font-bold text-gray-800">Drag and drop file here</h3>
-                                <p className="text-sm text-gray-500 mt-1">Limit: 200MB per file • CSV, Excel, PDF</p>
+                {/* ── Sample File feedback ─────────────────────────────── */}
+                {inputType === 'sample' && (
+                    <div className="text-center">
+                        {loadingSample ? (
+                            <div className="flex items-center justify-center gap-2 text-blue-600 text-sm font-medium py-4">
+                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                Loading sample data…
+                            </div>
+                        ) : uploaded && fileName ? (
+                            <div className="inline-flex items-center gap-2 text-green-600 text-sm font-medium bg-green-50 px-5 py-2.5 rounded-lg border border-green-200">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                Sample file loaded — {fileName}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-500 py-2">Click "Use Sample File" to load demo property data</p>
+                        )}
+                    </div>
+                )}
+
+                {/* ── Upload / Drop zone ──────────────────────────────── */}
+                {inputType === 'upload' && (
+                    <div className="space-y-4">
+                        <div
+                            className={`border-2 border-dashed rounded-2xl bg-white p-10 text-center relative overflow-hidden group shadow-md transition-all ${
+                                isDragOver ? 'border-blue-500 bg-blue-50/60 scale-[1.01]' : 'border-gray-300 hover:border-blue-400'
+                            }`}
+                            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                            onDragLeave={() => setIsDragOver(false)}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                setIsDragOver(false);
+                                const file = e.dataTransfer.files?.[0];
+                                if (file) handleFileUpload({ target: { files: [file] } });
+                            }}
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-br from-blue-50/40 to-indigo-50/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+
+                            <div className="flex flex-col items-center gap-4 relative z-10">
+                                {/* Upload cloud icon */}
+                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all ${
+                                    isDragOver ? 'bg-blue-200 scale-110' : 'bg-blue-100'
+                                }`}>
+                                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
+                                </div>
+
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800">
+                                        {isDragOver ? 'Drop your file here' : 'Drag & drop files here'}
+                                    </h3>
+                                    <p className="text-sm text-gray-500 mt-1">Limit: 200MB per file • CSV, Excel, PDF</p>
+                                </div>
+
+                                {/* Action buttons row */}
+                                <div className="flex items-center gap-3 mt-2">
+                                    <label className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-6 rounded-lg shadow-md transition-all text-sm cursor-pointer hover:-translate-y-0.5 flex items-center gap-2">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                        Upload Files
+                                        <input
+                                            ref={fileInputRef}
+                                            type="file"
+                                            className="hidden"
+                                            onChange={handleFileUpload}
+                                            accept=".csv,.xlsx,.xls,.pdf"
+                                        />
+                                    </label>
+
+                                    <a
+                                        href="/sample/Property_data_sample.csv"
+                                        download="Property_data_template.csv"
+                                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-blue-300 transition-all shadow-sm hover:-translate-y-0.5"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                        Download Template
+                                    </a>
+                                </div>
+
+                                {/* Upload success indicator */}
                                 {uploaded && fileName && (
-                                    <div className="flex items-center gap-2 text-green-600 text-sm mt-4 font-medium">
+                                    <div className="flex items-center gap-2 text-green-600 text-sm mt-2 font-medium bg-green-50 px-4 py-2 rounded-lg border border-green-200">
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                         Successfully uploaded '{fileName}'
                                     </div>
                                 )}
                             </div>
-                            <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-6 rounded-lg shadow-md transition-all text-sm whitespace-nowrap pointer-events-auto">
-                                Browse Files
-                            </button>
                         </div>
-                    </div>
 
-                    {/* ── Or use a sample file ────────────────────────────── */}
-                    <div className="flex items-center gap-4 my-5">
-                        <div className="flex-1 border-t border-gray-200"></div>
-                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">or</span>
-                        <div className="flex-1 border-t border-gray-200"></div>
-                    </div>
-
-                    <div className="border border-gray-200 rounded-xl bg-gradient-to-br from-blue-50/60 to-indigo-50/40 p-6 shadow-sm transition-all hover:shadow-md">
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
-                            <div className="flex items-start gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                </div>
+                        {/* Validation error display */}
+                        {validationError && (
+                            <div className="w-full max-w-4xl mx-auto mt-4 text-left bg-rose-50 border border-rose-200 rounded-xl p-4 text-rose-800 flex items-start gap-3">
+                                <svg className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
                                 <div>
-                                    <h3 className="text-sm font-bold text-gray-800">Use Sample File</h3>
-                                    <p className="text-xs text-gray-500 mt-0.5">Pre-loaded demo data — 6 property submissions, ready to go</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                                <button
-                                    onClick={handleUseSampleFile}
-                                    disabled={loadingSample}
-                                    className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all shadow-sm ${
-                                        loadingSample
-                                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                            : 'bg-blue-600 hover:bg-blue-700 text-white hover:-translate-y-0.5 shadow-md'
-                                    }`}
-                                >
-                                    {loadingSample ? (
-                                        <>
-                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            Loading…
-                                        </>
-                                    ) : (
-                                        <>
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
-                                            Use This File
-                                        </>
-                                    )}
-                                </button>
-                                <a
-                                    href="/sample/Property_data_sample.csv"
-                                    download
-                                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all shadow-sm"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                    Download Sample
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                    </>
-                ) : (
-                    <div className="space-y-4">
-                        <div className="border border-dashed border-gray-300 rounded-xl bg-white p-8 text-center relative overflow-hidden group shadow-md transition-colors hover:border-blue-400">
-                            <div className="absolute inset-0 bg-blue-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                            <input
-                                type="file"
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                                onChange={(e) => setAcordFiles(Array.from(e.target.files))}
-                                accept=".pdf"
-                                multiple
-                            />
-                            <div className="flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10 w-full max-w-4xl mx-auto pointer-events-none">
-                                <div className="text-left">
-                                    <h3 className="text-lg font-bold text-gray-800">Drag and drop ACORD PDFs here</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Supports multiple .pdf files for extraction</p>
-                                    {acordFiles.length > 0 && !uploaded && (
-                                        <div className="flex items-center gap-2 text-blue-600 text-sm mt-4 font-medium">
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                                            {acordFiles.length} file(s) selected ready for extraction
-                                        </div>
-                                    )}
-                                </div>
-                                <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-6 rounded-lg shadow-md transition-all text-sm whitespace-nowrap pointer-events-auto">
-                                    Select PDFs
-                                </button>
-                            </div>
-                        </div>
-
-                        {acordFiles.length > 0 && !uploaded && (
-                            <div className="flex flex-col items-center gap-3 mt-6 relative z-30">
-                                <button
-                                    onClick={processAcordForms}
-                                    disabled={processingAcord}
-                                    className={`px-8 py-3 rounded-xl font-bold text-sm transition-all shadow-md ${processingAcord ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white hover:-translate-y-0.5'}`}
-                                >
-                                    {processingAcord ? (
-                                        <span className="flex items-center gap-2">
-                                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                            Extracting Form Data...
-                                        </span>
-                                    ) : (
-                                        'Extract Data from ACORD Forms'
-                                    )}
-                                </button>
-
-                                {processingAcord && (
-                                    <div className="w-full max-w-md mt-2">
-                                        <div className="bg-gray-200 rounded-full h-2 overflow-hidden shadow-inner">
-                                            <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${Math.round(progress * 100)}%` }}></div>
-                                        </div>
-                                        <p className="text-xs text-center text-gray-500 mt-2">{Math.round(progress * 100)}% complete</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {uploaded && fileName && inputType === 'acord' && (
-                            <div className="flex justify-center mt-4 relative z-30">
-                                <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-lg text-sm font-medium border border-green-200">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                    Successfully processed and evaluated {fileName}
+                                    <h4 className="font-bold text-sm text-rose-900">Upload Validation Failed</h4>
+                                    <p className="text-xs mt-1 whitespace-pre-wrap leading-relaxed">{validationError}</p>
                                 </div>
                             </div>
                         )}
@@ -506,44 +639,50 @@ const DataUploadPage = () => {
                 <>
                     {/* SECTION 2: Data Preview */}
                     <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-md">
-                        <h2 className="text-lg font-bold text-gray-800 text-center mb-6">Data Preview</h2>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                            <StatBox label="Total Records" value="6" />
-                            <StatBox label="Total Columns" value="78" />
-                            <StatBox label="Numerical Columns" value="36" />
-                            <StatBox label="Categorical Columns" value="42" />
-                            <StatBox label="Duplicate Rows" value="0" />
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-lg font-bold text-gray-800">Data Preview</h2>
+                            <span className="text-xs text-gray-400 font-medium bg-gray-100 px-3 py-1 rounded-full">
+                                {fileName}
+                            </span>
                         </div>
-                        <div className="border border-gray-200 rounded-lg overflow-x-auto shadow-sm">
+                        {dataStats && (
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                                <StatBox label="Total Records" value={dataStats.totalRecords} />
+                                <StatBox label="Total Columns" value={dataStats.totalColumns} />
+                                <StatBox label="Numerical Columns" value={dataStats.numerical} />
+                                <StatBox label="Categorical Columns" value={dataStats.categorical} />
+                                <StatBox label="Duplicate Rows" value={dataStats.duplicates} />
+                            </div>
+                        )}
+                        <div className="border border-gray-200 rounded-lg overflow-x-auto overflow-y-auto shadow-sm" style={{ maxHeight: '420px' }}>
                             <table className="w-full text-sm text-left whitespace-nowrap">
-                                <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200">
+                                <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-200 sticky top-0 z-10">
                                     <tr>
-                                        <th className="px-4 py-3">submission_id</th>
-                                        <th className="px-4 py-3">submission_channel</th>
-                                        <th className="px-4 py-3">submission_date</th>
-                                        <th className="px-4 py-3">applicant_id</th>
-                                        <th className="px-4 py-3">property_id</th>
-                                        <th className="px-4 py-3">policy_id</th>
-                                        <th className="px-4 py-3">broker_id</th>
-                                        <th className="px-4 py-3">description</th>
+                                        <th className="px-4 py-3 bg-gray-50 text-gray-400 font-medium text-center border-r border-gray-200 w-12">#</th>
+                                        {csvHeaders.map((header) => (
+                                            <th key={header} className="px-4 py-3 bg-gray-50">{header}</th>
+                                        ))}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {MOCK_DATA.map((row, i) => (
-                                        <tr key={i} className="bg-white hover:bg-gray-50 transition-colors">
-                                            <td className="px-4 py-2.5 text-gray-800 font-medium">{row.sub}</td>
-                                            <td className="px-4 py-2.5 text-gray-600">{row.ch}</td>
-                                            <td className="px-4 py-2.5 text-gray-600">{row.date}</td>
-                                            <td className="px-4 py-2.5 text-gray-600">{row.app}</td>
-                                            <td className="px-4 py-2.5 text-gray-600">{row.prop}</td>
-                                            <td className="px-4 py-2.5 text-gray-600">{row.pol}</td>
-                                            <td className="px-4 py-2.5 text-gray-600">{row.bro}</td>
-                                            <td className="px-4 py-2.5 text-gray-500 max-w-xs truncate">{row.desc}</td>
+                                    {csvRows.map((row, i) => (
+                                        <tr key={i} className="bg-white hover:bg-blue-50/40 transition-colors">
+                                            <td className="px-4 py-2.5 text-gray-400 text-center border-r border-gray-100 text-xs font-mono">{i + 1}</td>
+                                            {csvHeaders.map((header, j) => (
+                                                <td key={j} className={`px-4 py-2.5 max-w-[220px] truncate ${
+                                                    j === 0 ? 'text-gray-800 font-medium' : 'text-gray-600'
+                                                }`}>
+                                                    {row[header] ?? ''}
+                                                </td>
+                                            ))}
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
+                        <p className="text-xs text-gray-400 mt-2 text-right">
+                            Showing {csvRows.length} row{csvRows.length !== 1 ? 's' : ''} × {csvHeaders.length} column{csvHeaders.length !== 1 ? 's' : ''}
+                        </p>
                     </section>
 
                     <hr className="border-gray-200" />
