@@ -488,47 +488,7 @@ const DataUploadPage = () => {
                     </button>
                 </div>
 
-                {/* ── Schema Requirements / Validation Guidelines ────────────────── */}
-                {schema && (
-                    <div className="bg-blue-50/40 border border-blue-100 rounded-2xl p-5 max-w-4xl mx-auto mb-6 text-left">
-                        <details className="group">
-                            <summary className="flex items-center justify-between font-bold text-blue-800 text-sm cursor-pointer select-none">
-                                <span className="flex items-center gap-2">
-                                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    View Expected CSV Template Schema (Validation Requirements)
-                                </span>
-                                <svg className="w-4 h-4 text-blue-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </summary>
-                            <div className="mt-4 border-t border-blue-100 pt-4">
-                                <p className="text-xs text-blue-700 mb-3">
-                                    Your uploaded CSV must exactly match the column structure, order, names, and types of the template.
-                                    Expected columns: <strong>{schema.expectedColumnCount}</strong>.
-                                </p>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                    {schema.columns.map((col) => (
-                                        <div key={col.index} className="bg-white border border-blue-50 rounded-xl p-2.5 shadow-sm text-xs flex justify-between items-center">
-                                            <div>
-                                                <span className="text-gray-400 font-mono mr-1.5">{col.index + 1}.</span>
-                                                <span className="font-semibold text-gray-700">{col.name}</span>
-                                            </div>
-                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                                col.type === 'integer' || col.type === 'number'
-                                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                                    : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                            }`}>
-                                                {col.type}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </details>
-                    </div>
-                )}
+
 
                 {/* ── Sample File feedback ─────────────────────────────── */}
                 {inputType === 'sample' && (
